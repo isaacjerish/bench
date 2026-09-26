@@ -9,6 +9,9 @@ dut:
   connected_sensor: replacement MPU-6500-compatible breakout
   sensor_sda: C6 IO5
   sensor_scl: C6 IO7
+source_files:
+  - dut_examples/imu_demo/imu_demo.ino
+  - dut_examples/imu_demo/config.h
 probes:
   P1:
     state: connected
@@ -20,6 +23,8 @@ probes:
   P2:
     state: connected
     net: MPU_VCC
+    expected_min_v: 3.0
+    expected_max_v: 3.3
     tip: breadboard row U
     adc: S3 IO4 via 10k/10k divider
     digital: S3 IO5 direct input

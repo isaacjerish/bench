@@ -4,7 +4,7 @@ import json
 import threading
 from urllib.error import HTTPError
 from urllib.parse import quote
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import pytest
 
@@ -81,7 +81,35 @@ def test_imu_read_error_is_reported_explicitly(monkeypatch):
         read_imu_report("/dev/fake", timeout_s=0.1)
 
 
-def test_dashboard_serves_assets_and_snapshot_without_hardware():
+def test_probe_explorer_preserves_order_and_declared_source(monkeypatch):
+    class FakeClient:
+        def __init__(self, _port):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def measure_voltage_pair(self):
+            return {"simultaneous": False, "wiring_source": "user_declared",
+                    "readings": [{"probe": "P1", "voltage_v": 2.1, "declared_net": "LIGHT_SENSE"},
+                                 {"probe": "P2", "voltage_v": 3.2, "declared_net": "MPU_VCC"}]}
+
+        def read_digital(self, probe):
+            return {"state": "HIGH" if probe == "P2" else "LOW"}
+
+    monkeypatch.setattr("benchos.dashboard.candidate_ports", lambda: ["/dev/fake"])
+    monkeypatch.setattr("benchos.dashboard.BenchClient", FakeClient)
+    sample = DashboardState().probe_sample("/dev/fake")
+    assert sample["source"] == "s3_physical"
+    assert sample["simultaneous"] is False
+    assert [row["probe"] for row in sample["readings"]] == ["P1", "P2"]
+    assert sample["digital_states"] == {"P1": "LOW", "P2": "HIGH"}
+
+
+def test_dashboard_serves_assets_and_snapshot_without_hardware(monkeypatch):
     state = DashboardState()
     try:
         server = DashboardServer(("127.0.0.1", 0), state)
@@ -94,10 +122,7 @@ def test_dashboard_serves_assets_and_snapshot_without_hardware():
         with urlopen(base + "/") as response:
             assert b"Benchy" in response.read()
         with urlopen(base + "/app.js") as response:
-            assert b"const MODES" in response.read()
-        with urlopen(base + "/scene-light.png") as response:
-            assert response.headers["Content-Type"] == "image/png"
-            assert response.read(8) == b"\x89PNG\r\n\x1a\n"
+            assert b"const names = ['P1', 'P2']" in response.read()
         with urlopen(base + "/api/harness") as response:
             declaration = json.load(response)
             assert declaration["source"] == "user_declared"
@@ -107,6 +132,7 @@ def test_dashboard_serves_assets_and_snapshot_without_hardware():
             assert inventory["source"] == "local_files"
             assert inventory["flashed_firmware_verified"] is False
             assert any(item["path"] == "dut_examples/imu_demo/imu_demo.ino" for item in inventory["files"])
+            assert not any(item["path"] == "dut_examples/led_demo/led_demo.ino" for item in inventory["files"])
         with urlopen(base + "/api/source?path=" + quote("dut_examples/imu_demo/imu_demo.ino")) as response:
             source = json.load(response)
             assert "IMU_ACCEL_G" in source["text"]
@@ -114,8 +140,27 @@ def test_dashboard_serves_assets_and_snapshot_without_hardware():
             urlopen(base + "/api/source?path=../.env")
         assert blocked.value.code == 400
         with pytest.raises(HTTPError) as blocked:
+            urlopen(base + "/api/source?path=" + quote("dut_examples/led_demo/led_demo.ino"))
+        assert blocked.value.code == 400
+        with pytest.raises(HTTPError) as blocked:
             urlopen(base + "/api/serial?port=/dev/not-a-device")
         assert blocked.value.code == 400
+        with pytest.raises(HTTPError) as blocked:
+            urlopen(base + "/api/probes?lab_port=/dev/not-a-device")
+        assert blocked.value.code == 400
+        declaration_body = json.dumps({"P1": {"state": "connected", "net": "LIGHT_SENSE"},
+                                       "P2": {"state": "connected", "net": "MPU_VCC"}}).encode()
+        request = Request(base + "/api/harness/probes", data=declaration_body,
+                          headers={"Content-Type": "application/json"}, method="POST")
+        with pytest.raises(HTTPError) as blocked:
+            urlopen(request)
+        assert blocked.value.code == 403
+        monkeypatch.setattr("benchos.dashboard.update_probe_declarations",
+                            lambda _data: {"source": "user_declared", "probes": {}})
+        request = Request(base + "/api/harness/probes", data=declaration_body,
+                          headers={"Content-Type": "application/json", "X-Benchy-Local": "1"}, method="POST")
+        with urlopen(request) as response:
+            assert json.load(response)["source"] == "user_declared"
         with urlopen(base + "/api/snapshot?mode=light") as response:
             data = json.load(response)
             assert data["diagnosis"]["state"] == "unknown"

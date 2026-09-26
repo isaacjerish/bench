@@ -140,20 +140,23 @@ labeled as DUT claims until the S3 independently observes the bus.
 
 ## Local dashboard
 
-The monochrome dashboard shows the S3's independent physical reading beside
-the C6 report and a plain-language verdict. Its four overhead breadboard
-images give a consistent visual reference for the light sensor, LED, servo,
-and MPU demos. These generated scenes are **illustrative**; the exact wiring
-listed below each image and in the demo READMEs is authoritative. The
-**Preview** switch uses clearly marked sample readings to show the interface
-without hardware; preview values are never reported as live measurements.
-An investigation panel lists measured evidence, remaining uncertainty, next
-checks, and a local timeline that can be exported as JSON. The read-only C6
-serial monitor samples bounded windows, with filtering, pause, clear, and
-export controls. There may be gaps while another measurement uses the port.
-The code inspector shows an allowlisted set of local source files, file hashes,
-the Git revision, and local modifications. It labels the declared DUT firmware
-separately because the source on disk does not prove which binary was flashed.
+The monochrome dashboard is a generic workspace for the **current declared
+design**. Its overhead breadboard map is illustrative: P1/P2 net labels come
+from `harness/current.yaml`, not a camera or automatic wiring discovery. The
+page reads both S3 probes in order, displays their physical voltages and
+digital levels, and checks optional declared 0–3.3 V target ranges. The
+connection editor saves probe net names, states, and target ranges to the local
+harness file; saving a declaration does not verify or move a wire. The
+**Preview** switch uses clearly marked sample readings without hardware;
+preview values are never reported as live measurements.
+
+The investigation panel shows evidence, uncertainty, a suggested next check,
+and a local timeline export. The read-only DUT serial monitor samples bounded
+windows with filtering, pause, clear, and export controls. There may be gaps
+while another tool uses the port. The code inspector shows the S3 source,
+harness, and source files listed under `source_files` in the current harness,
+along with hashes, the Git revision, and local modifications. The declared DUT
+firmware is a label; source on disk does not prove which binary was flashed.
 Subtle motion is disabled when the browser requests reduced motion. The server
 listens on the Mac's loopback interface only and exposes no firmware-flashing
 endpoint.
@@ -168,9 +171,10 @@ if either board was unplugged):
 Open [http://127.0.0.1:8765](http://127.0.0.1:8765). You can also select the
 ports in the page. The dashboard releases the S3 serial port after each
 sample; BenchOS uses a short cross-process lock to share its serial ports with
-the Codex MCP server and CLI. The dashboard reads P1 for the light/LED/servo
-views and P2 for the declared MPU VCC connection. Switching the page's circuit tab does not rewire the
-hardware or change the C6 firmware.
+the Codex MCP server and CLI. The dashboard has no demo-specific circuit tabs.
+Named demo checks remain available through the CLI and MCP tools. Edit
+`harness/current.yaml` after changing the design's DUT metadata or source
+files; use the page's connection editor for P1/P2 declarations.
 
 The visual direction draws on the [shadcn/ui dashboard examples](https://ui.shadcn.com/examples/dashboard),
 [Anthropic's frontend-design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md),

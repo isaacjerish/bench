@@ -52,6 +52,9 @@ not mocked values.
 | Dashboard serial monitor API with connected C6 | Captured eight real `IMU_RAW` and `IMU_ACCEL_G` lines in a 1200 ms bounded window; this is sampled output, not continuous capture |
 | Dashboard after serial monitor added | P2 measured 3.225 V; C6 reported 1.088 g with no clipped axes; existing IMU verdict preserved |
 | Host tests with serial and code APIs | 31 passed, including source-file allowlist and invalid-port rejection |
+| Generic dashboard software checkpoint, 2026-09-26 | 34 host tests passed with loopback access; JavaScript syntax and Git whitespace checks passed |
+| Generic dashboard browser preview | Illustrative overhead map loaded current P1/P2 net labels and target range from the harness; preview readings stayed labeled as sample data |
+| Current-design source inventory | Listed S3 source, harness, and only the declared IMU DUT source files; unrelated demo sketches were excluded |
 
 The resistor divider is nominally 1:2. These values show a working physical
 measurement loop, but the ADC and resistor tolerances do not make it a
@@ -76,3 +79,8 @@ The dashboard server is
 available via `./scripts/python.sh -m benchos.dashboard` when started; do not
 assume the previous process is still running. `read_imu_stream` returns the
 C6's claim rather than physical proof from P1.
+
+The generic dashboard redesign did not involve a new physical acceptance
+measurement. Its paired-probe API was tested with a mock S3 client. The
+read-only S3 bus-activity monitor is compiled and gated in the host but has
+not been flashed, wired, or physically validated.

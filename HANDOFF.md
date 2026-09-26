@@ -15,11 +15,11 @@ real hardware results. The key directories are:
 - `dut_examples/light_sensor_demo/`: photoresistor cross-check demo, available to reflash.
 - `dut_examples/imu_demo/`: currently flashed MPU-family I²C motion demo.
 - `harness/current.yaml`: user-declared live wiring map; update after any wire move.
-- `benchos/dashboard.py` and `benchos/dashboard_ui/`: local dashboard and live
-  measurement view with four overhead breadboard scenes, serial monitor,
-  investigation timeline, and code inspector; start with
-  `./scripts/python.sh -m benchos.dashboard`. The scenes are illustrative;
-  read the exact wiring text shown below each image.
+- `benchos/dashboard.py` and `benchos/dashboard_ui/`: generic local design
+  workspace with a declared-net overhead map, paired physical probes, target
+  checks, serial monitor, investigation timeline, and code inspector. Start
+  with `./scripts/python.sh -m benchos.dashboard`. The map is illustrative;
+  it cannot discover the real breadboard layout.
 - `physical_tests/`: YAML pass/fail checks.
 - `scripts/`: board detection, flashing, and test commands.
 - `tests/`: Python unit tests.
@@ -89,9 +89,8 @@ real hardware results. The key directories are:
 - `harness/current.yaml` records user-declared connections, and the CLI/MCP
   `harness` / `describe_harness` tools expose them. The `imu_vcc` profile
   requires P2 to be declared connected to `MPU_VCC` before running. A declaration is not a
-  physical measurement. The dashboard Motion view now combines S3 P2 supply
-  evidence with the C6 motion stream without calling the bus independently
-  verified.
+  physical measurement. The named IMU check combines S3 P2 supply evidence
+  with the C6 motion stream without calling the bus independently verified.
 - Deliberately opening only the C6 IO7 → MPU SCL wire left P2's `imu_vcc`
   check passing at 3.228 V/HIGH while the C6 reported
   `IMU_ERROR no_device_at_0x68_or_0x69`. The combined diagnosis was
@@ -106,6 +105,14 @@ real hardware results. The key directories are:
   and declared DUT firmware; it explicitly does not verify the flashed binary.
   The GUI can render in Preview without boards. Session notes are stored in the
   browser's local storage and can be exported as JSON.
+- The current dashboard has no built-in demo circuit tabs. It reads P1 and P2
+  as generic physical inputs, shows their user-declared net names on an
+  illustrative overhead map, and evaluates optional 0–3.3 V target ranges.
+  Its editor writes only P1/P2 connection declarations to `harness/current.yaml`.
+  The source viewer uses that file's `source_files` list for the current DUT.
+  This generic interface and paired-probe HTTP endpoint have host tests and
+  a browser preview check; no new physical acceptance run was performed for
+  this redesign. The earlier physical measurements above remain the evidence.
 - A read-only two-line bus-activity monitor is implemented in the S3 source
   for IO8/IO9 and exposed by CLI/MCP, but it has **not** been flashed, wired,
   or physically validated. `harness/current.yaml` keeps it `pending`, and the
@@ -196,9 +203,18 @@ Run in the repository directory:
 ./scripts/python.sh -m pytest -q
 ```
 
-The C6 currently runs `imu_demo`; use the dashboard Motion sensor tab or
-`read_imu_stream` MCP tool for current readings. Reflash `light_sensor_demo`
-before running `light-compare` again.
+The C6 currently runs `imu_demo`; use the dashboard's generic serial monitor
+or `read_imu_stream` MCP tool for its output. Reflash `light_sensor_demo`
+before running `light-compare` again. To open the dashboard:
+
+```sh
+./scripts/python.sh -m benchos.dashboard --lab-port /dev/cu.usbmodem1201 --dut-port /dev/cu.usbmodem1101
+```
+
+Open `http://127.0.0.1:8765/`. Detect ports again if they have changed. The
+design map follows the harness declaration; the connection editor is only a
+record of user-checked wiring. Change `dut`, `source_files`, and other design
+metadata directly in `harness/current.yaml` when switching to a fresh design.
 
 To switch the C6 to the servo signal demo, disconnect the photoresistor and
 its additional 10 kΩ pull-down from T, remove C6 GPIO1 from T, then connect
@@ -234,11 +250,16 @@ and are not included in Git.
 
 ## Remaining work
 
-1. Build and validate a buffered, high-impedance input before probing MPU
-   SDA/SCL. The current 10 kΩ/10 kΩ probe loads the bus and must not be assumed
-   suitable for I²C diagnosis.
-2. If testing SG90 motion, identify a separate regulated 5 V supply with
+1. When hardware work resumes, choose a safe high-impedance interface for
+   S3 IO8/IO9, wire it to the MPU I²C bus, flash the staged S3 bus-monitor
+   firmware, and record physical validation. The staged monitor is compiled
+   only, not a demonstrated capability. The current 10 kΩ/10 kΩ probes load
+   the bus and must not be assumed suitable for SDA/SCL.
+2. For a new design, update the harness's DUT metadata and source-file list,
+   verify each probe connection by hand, and add bounded physical test
+   expectations. The GUI does not infer connectivity or flashed code.
+3. If testing SG90 motion, identify a separate regulated 5 V supply with
    adequate current first. Then wire its ground to the shared rail, SG90 yellow
    to C6 GPIO20/T, brown to ground, and red to that supply's +5 V.
-3. Flash normal servo firmware, run the physical signal check, enable sweep,
+4. Flash normal servo firmware, run the physical signal check, enable sweep,
    and verify actual SG90 movement. Record the result in `VALIDATION.md`.

@@ -23,27 +23,41 @@ import yaml
 
 from .client import BenchClient
 from .light import read_light_report
-from .harness import describe_harness
+from .harness import describe_harness, update_probe_declarations
 from .ports import available_ports, candidate_ports
 from .protocol import BenchError
 from .serial_lock import SerialPortLock
 
 MODES = {"light", "led", "servo", "imu"}
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SOURCE_FILES = (
-    "lab_controller/lab_controller.ino", "lab_controller/config.h",
-    "dut_examples/imu_demo/imu_demo.ino", "dut_examples/imu_demo/config.h",
-    "dut_examples/light_sensor_demo/light_sensor_demo.ino",
-    "dut_examples/led_demo/led_demo.ino", "dut_examples/servo_demo/servo_demo.ino",
-    "harness/current.yaml", "physical_tests/imu_vcc.yaml",
-)
+BASE_SOURCE_FILES = ("lab_controller/lab_controller.ino", "lab_controller/config.h",
+                     "harness/current.yaml")
 IMU_LINE = re.compile(r"IMU_ACCEL_G x=(-?\d+\.\d+) y=(-?\d+\.\d+) z=(-?\d+\.\d+)(?: id=0x([0-9A-Fa-f]{2}))?\Z")
 WHO_LINE = re.compile(r"IMU_FOUND addr=0x([0-9A-Fa-f]{2}) who_am_i=0x([0-9A-Fa-f]{2})\Z")
 ASSETS = {"/": ("index.html", "text/html; charset=utf-8"),
           "/app.css": ("app.css", "text/css; charset=utf-8"),
-          "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-          **{f"/scene-{mode}.png": (f"scene-{mode}.png", "image/png")
-             for mode in MODES}}
+          "/app.js": ("app.js", "text/javascript; charset=utf-8")}
+
+
+def viewable_source_files() -> tuple[str, ...]:
+    """Expose only project files explicitly listed for the current design."""
+    try:
+        declared = describe_harness().get("source_files", [])
+    except (OSError, ValueError, yaml.YAMLError):
+        declared = []
+    names = list(BASE_SOURCE_FILES)
+    for name in declared[:16] if isinstance(declared, list) else []:
+        if not isinstance(name, str):
+            continue
+        relative = Path(name)
+        if (relative.is_absolute() or ".." in relative.parts
+                or any(part.startswith(".") for part in relative.parts)
+                or relative.suffix.lower() not in {".ino", ".h", ".cpp", ".c", ".py", ".yaml", ".md"}):
+            continue
+        candidate = (REPO_ROOT / relative).resolve()
+        if name not in names and candidate.is_relative_to(REPO_ROOT) and candidate.is_file():
+            names.append(name)
+    return tuple(names)
 
 
 def code_inventory() -> dict:
@@ -57,7 +71,7 @@ def code_inventory() -> dict:
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         commit, status = None, []
     entries = []
-    for name in SOURCE_FILES:
+    for name in viewable_source_files():
         path = REPO_ROOT / name
         if path.is_file():
             data = path.read_bytes()
@@ -76,7 +90,7 @@ def code_inventory() -> dict:
 
 
 def source_file(name: str) -> dict:
-    if name not in SOURCE_FILES:
+    if name not in viewable_source_files():
         raise ValueError("File is not in the source viewer allowlist")
     path = REPO_ROOT / name
     data = path.read_bytes()
@@ -220,6 +234,19 @@ class DashboardState:
                     "continuous": False, "latest_seq": self._serial_seq,
                     "events": [item for item in self._serial_events if item["seq"] > after_seq]}
 
+    def probe_sample(self, port: str) -> dict:
+        if port not in set(candidate_ports()):
+            raise ValueError("S3 port is not currently available")
+        with self._lock:
+            with BenchClient(port) as client:
+                pair = client.measure_voltage_pair()
+                digital = {name: client.read_digital(name)["state"] for name in ("P1", "P2")}
+        pair["digital_states"] = digital
+        pair["timestamp"] = datetime.now(timezone.utc).isoformat()
+        pair["source"] = "s3_physical"
+        pair["voltage_limit_v"] = 3.3
+        return pair
+
     def close(self) -> None:
         pass
 
@@ -300,6 +327,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except (ValueError, BenchError) as exc:
                 self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
+        if route.path == "/api/probes":
+            port = parse_qs(route.query).get("lab_port", [""])[0]
+            try:
+                self._json(self.server.state.probe_sample(port))
+            except ValueError as exc:
+                self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            except (BenchError, OSError) as exc:
+                self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return
         if route.path == "/api/harness":
             try:
                 self._json(describe_harness())
@@ -334,6 +370,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
         self.send_error(HTTPStatus.NOT_FOUND)
+
+    def do_POST(self) -> None:
+        if urlsplit(self.path).path != "/api/harness/probes":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        origin = self.headers.get("Origin")
+        expected_origin = f"http://127.0.0.1:{self.server.server_address[1]}"
+        if (self.headers.get("X-Benchy-Local") != "1"
+                or self.headers.get_content_type() != "application/json"
+                or (origin and origin != expected_origin)):
+            self._json({"error": "Local JSON request required"}, HTTPStatus.FORBIDDEN)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 1 <= length <= 2048:
+                raise ValueError("Invalid request size")
+            payload = json.loads(self.rfile.read(length))
+            self._json(update_probe_declarations(payload))
+        except (OSError, ValueError, yaml.YAMLError) as exc:
+            self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
     def _json(self, value: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
         data = json.dumps(value).encode("utf-8")

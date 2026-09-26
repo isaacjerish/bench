@@ -143,10 +143,14 @@ class BenchClient:
         second_at = datetime.now(timezone.utc).isoformat()
         second = self.measure_voltage(names[1])
         declared = describe_harness()["probes"]
+        def metadata(name: str) -> dict:
+            item = declared[name]
+            return {"declared_state": item["state"],
+                    "declared_net": item["net"] if item["state"] == "connected" else None}
         return {"simultaneous": False, "elapsed_ms": round((time.monotonic() - start) * 1000, 1),
                 "wiring_source": "user_declared",
-                "readings": [{"timestamp": first_at, "declared_net": declared[names[0]]["net"], **first},
-                             {"timestamp": second_at, "declared_net": declared[names[1]]["net"], **second}]}
+                "readings": [{"timestamp": first_at, **metadata(names[0]), **first},
+                             {"timestamp": second_at, **metadata(names[1]), **second}]}
 
     def read_digital(self, probe: str) -> dict:
         return self._request(f"READ_DIGITAL {validate_probe(probe)}", "digital")
