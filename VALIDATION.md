@@ -31,6 +31,7 @@ not mocked values.
 | Local dashboard live light view | C6 reported 2.255 V; S3 measured 2.191 V; UI showed physical PASS |
 | CLI while dashboard runs | S3 measured 2.192 V; shared serial lock allowed both processes to use the port |
 | Dashboard preview fault | Clearly marked sample values 0.000 V vs 2.207 V showed FAIL; no hardware read represented as live |
+| Monochrome dashboard redesign | Four generated overhead breadboard scenes served locally; live light view showed S3 2.180 V vs C6 2.245 V, PASS |
 
 The resistor divider is nominally 1:2. These values show a working physical
 measurement loop, but the ADC and resistor tolerances do not make it a

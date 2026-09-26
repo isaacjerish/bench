@@ -20,4 +20,4 @@ benchos = "benchos.cli:main"
 include = ["benchos*"]
 
 [tool.setuptools.package-data]
-"benchos.dashboard_ui" = ["*.html", "*.css", "*.js"]
+"benchos.dashboard_ui" = ["*.html", "*.css", "*.js", "*.png"]

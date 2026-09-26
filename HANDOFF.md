@@ -14,7 +14,9 @@ real hardware results. The key directories are:
 - `dut_examples/light_sensor_demo/`: photoresistor cross-check demo, currently flashed.
 - `dut_examples/imu_demo/`: new MPU-family I²C motion demo; wiring pending.
 - `benchos/dashboard.py` and `benchos/dashboard_ui/`: local dashboard and live
-  measurement view; start with `./scripts/python.sh -m benchos.dashboard`.
+  measurement view with four overhead breadboard scenes; start with
+  `./scripts/python.sh -m benchos.dashboard`. The scenes are illustrative;
+  read the exact wiring text shown below each image.
 - `physical_tests/`: YAML pass/fail checks.
 - `scripts/`: board detection, flashing, and test commands.
 - `tests/`: Python unit tests.

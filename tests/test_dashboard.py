@@ -46,6 +46,9 @@ def test_dashboard_serves_assets_and_snapshot_without_hardware():
             assert b"BenchOS" in response.read()
         with urlopen(base + "/app.js") as response:
             assert b"const MODES" in response.read()
+        with urlopen(base + "/scene-light.png") as response:
+            assert response.headers["Content-Type"] == "image/png"
+            assert response.read(8) == b"\x89PNG\r\n\x1a\n"
         with urlopen(base + "/api/snapshot?mode=light") as response:
             data = json.load(response)
             assert data["diagnosis"]["state"] == "unknown"

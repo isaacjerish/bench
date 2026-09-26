@@ -120,12 +120,16 @@ labeled as DUT claims until the S3 independently observes the bus.
 
 ## Local dashboard
 
-The dashboard shows the connected C6 circuit, the S3's independent physical
-reading, and a plain-language verdict. It covers the light sensor, LED, servo
-signal, and MPU demos. The amber **Preview data** switch uses clearly marked
-sample readings so you can inspect the page without hardware. Preview values
-are never reported as live measurements. The server listens on the Mac's
-loopback interface only and exposes no firmware-flashing endpoint.
+The monochrome dashboard shows the S3's independent physical reading beside
+the C6 report and a plain-language verdict. Its four overhead breadboard
+images give a consistent visual reference for the light sensor, LED, servo,
+and MPU demos. These generated scenes are **illustrative**; the exact wiring
+listed below each image and in the demo READMEs is authoritative. The
+**Preview** switch uses clearly marked sample readings to show the interface
+without hardware; preview values are never reported as live measurements.
+Subtle motion is disabled when the browser requests reduced motion. The server
+listens on the Mac's loopback interface only and exposes no firmware-flashing
+endpoint.
 
 From this repository, start it with the current serial ports (detect them again
 if either board was unplugged):
@@ -140,6 +144,13 @@ sample; BenchOS uses a short cross-process lock to share its serial ports with
 the Codex MCP server and CLI. The dashboard measures only the circuit
 currently wired to P1; switching the page's circuit tab does not rewire the
 hardware or change the C6 firmware.
+
+The visual direction draws on the [shadcn/ui dashboard examples](https://ui.shadcn.com/examples/dashboard),
+[Anthropic's frontend-design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md),
+and [Vercel's interface guidelines](https://github.com/vercel-labs/web-interface-guidelines).
+The dashboard uses its own small HTML/CSS/JS interface, with no React or
+template runtime dependency. Its reduced-motion setting follows the
+[MDN guidance](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@media/prefers-reduced-motion).
 
 ## C6 servo demo
 
