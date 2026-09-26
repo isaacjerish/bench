@@ -16,6 +16,11 @@ def test_measurement_lines_are_structured():
         "kind": "frequency", "probe": "P1", "frequency_hz": 50.0,
         "edges": 50, "window_ms": 1000, "pulse_us": 1500
     }
+    assert parse_response("OK BUS SDA HIGH HIGH EDGES 24 SCL HIGH HIGH EDGES 160 WINDOW_MS 1001") == {
+        "kind": "bus_activity", "window_ms": 1001, "edge_counts_approximate": True,
+        "sda": {"start": "HIGH", "end": "HIGH", "edges": 24},
+        "scl": {"start": "HIGH", "end": "HIGH", "edges": 160}
+    }
 
 
 @pytest.mark.parametrize("line", [
@@ -23,6 +28,8 @@ def test_measurement_lines_are_structured():
     "OK VOLTAGE P1 1.2 RAW -1 SAMPLES 32",
     "OK DIGITAL P1 MAYBE",
     "OK FREQUENCY P1 50 EDGES xx WINDOW_MS 250 PULSE_US 1500",
+    "OK BUS SDA HIGH HIGH EDGES xx SCL HIGH HIGH EDGES 160 WINDOW_MS 1000",
+    "OK BUS SDA HIGH HIGH EDGES 24 SCL MAYBE HIGH EDGES 160 WINDOW_MS 1000",
 ])
 def test_malformed_measurement_is_rejected(line):
     with pytest.raises(BenchProtocolError):

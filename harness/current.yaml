@@ -24,3 +24,10 @@ probes:
     adc: S3 IO4 via 10k/10k divider
     digital: S3 IO5 direct input
     note: user connected tip U to MPU VCC; P2 passed 3V3, GND, and sensor VCC checks
+bus_monitor:
+  state: pending
+  sda_net: MPU_SDA
+  scl_net: MPU_SCL
+  sda_input: S3 IO8 through 10k series resistor
+  scl_input: S3 IO9 through 10k series resistor
+  note: not connected until S3 pins and resistors are confirmed and wired

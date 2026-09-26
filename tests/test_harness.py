@@ -10,3 +10,4 @@ def test_harness_separates_declared_from_measured():
     assert result["probes"]["P1"]["net"] == "LIGHT_SENSE"
     assert result["probes"]["P2"]["state"] == "connected"
     assert result["probes"]["P2"]["net"] == "MPU_VCC"
+    assert result["bus_monitor"]["state"] == "pending"

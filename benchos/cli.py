@@ -25,6 +25,8 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ("voltage", "digital"):
         sub.add_parser(name).add_argument("probe")
     sub.add_parser("pair-voltage", help="Read P1 then P2, close in time but not simultaneously")
+    bus = sub.add_parser("bus-activity", help="Observe declared SDA/SCL read-only monitor inputs")
+    bus.add_argument("--duration-ms", type=int, default=1000)
     frequency = sub.add_parser("frequency")
     frequency.add_argument("probe")
     frequency.add_argument("--duration-ms", type=int, default=1000)
@@ -59,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
                 result = client.measure_voltage(args.probe)
             elif args.command == "pair-voltage":
                 result = client.measure_voltage_pair()
+            elif args.command == "bus-activity":
+                result = client.measure_bus_activity(args.duration_ms)
             elif args.command == "digital":
                 result = client.read_digital(args.probe)
             elif args.command == "frequency":

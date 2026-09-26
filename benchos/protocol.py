@@ -73,4 +73,12 @@ def parse_response(line: str) -> dict:
         return {"kind": "frequency", "probe": parts[2], "frequency_hz": _finite_float(parts[3]),
                 "edges": _nonnegative_int(parts[5]), "window_ms": _nonnegative_int(parts[7]),
                 "pulse_us": _nonnegative_int(parts[9])}
+    if (kind == "BUS" and len(parts) == 14 and parts[2] == "SDA"
+            and parts[5] == "EDGES" and parts[7] == "SCL"
+            and parts[10] == "EDGES" and parts[12] == "WINDOW_MS"
+            and all(parts[i] in {"HIGH", "LOW"} for i in (3, 4, 8, 9))):
+        return {"kind": "bus_activity", "window_ms": _nonnegative_int(parts[13]),
+                "edge_counts_approximate": True,
+                "sda": {"start": parts[3], "end": parts[4], "edges": _nonnegative_int(parts[6])},
+                "scl": {"start": parts[8], "end": parts[9], "edges": _nonnegative_int(parts[11])}}
     raise BenchProtocolError(f"Malformed response: {line!r}")

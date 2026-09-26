@@ -3,7 +3,7 @@ from collections import deque
 import pytest
 
 from benchos.client import BenchClient
-from benchos.protocol import BenchProtocolError
+from benchos.protocol import BenchError, BenchProtocolError
 
 
 class FakeSerial:
@@ -85,3 +85,9 @@ def test_auto_discovery_rescans_after_connection_loss(monkeypatch):
     assert client.read_digital("P1")["state"] == "LOW"
     assert [instance.port for instance in FakeSerial.instances] == ["/dev/old", "/dev/new"]
     client.close()
+
+
+def test_bus_monitor_refuses_unwired_inputs():
+    client = BenchClient("/dev/fake", startup_delay=0)
+    with pytest.raises(BenchError, match="not declared connected"):
+        client.measure_bus_activity()

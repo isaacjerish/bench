@@ -17,6 +17,10 @@ static const ProbeConfig PROBES[] = {
     {"P2", 4, 5, 2.0f},
 };
 static constexpr size_t PROBE_COUNT = sizeof(PROBES) / sizeof(PROBES[0]);
+// Dedicated read-only logic inputs. Wire only after confirming these pins are
+// exposed and the observed bus is 0–3.3 V; these pins are not 5 V tolerant.
+static constexpr uint8_t BUS_SDA_GPIO = 8;
+static constexpr uint8_t BUS_SCL_GPIO = 9;
 static constexpr uint32_t SERIAL_BAUD = 115200;
 static constexpr uint16_t ADC_SAMPLES = 32;
 static constexpr size_t MAX_COMMAND_LENGTH = 96;

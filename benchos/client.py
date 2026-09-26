@@ -118,7 +118,7 @@ class BenchClient:
         return result
 
     def _log(self, result: dict) -> None:
-        if self.log_path and result["kind"] in ("voltage", "digital", "frequency"):
+        if self.log_path and result["kind"] in ("voltage", "digital", "frequency", "bus_activity"):
             record = {"timestamp": datetime.now(timezone.utc).isoformat(), **result}
             with Path(self.log_path).open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(record) + "\n")
@@ -155,3 +155,14 @@ class BenchClient:
         if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or not 10 <= duration_ms <= 2000:
             raise ValueError("duration_ms must be an integer from 10 to 2000")
         return self._request(f"MEASURE_FREQ {validate_probe(probe)} {duration_ms}", "frequency")
+
+    def measure_bus_activity(self, duration_ms: int = 1000) -> dict:
+        """Observe declared read-only SDA/SCL inputs; edge counts are approximate."""
+        if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or not 10 <= duration_ms <= 2000:
+            raise ValueError("duration_ms must be an integer from 10 to 2000")
+        monitor = describe_harness()["bus_monitor"]
+        if monitor["state"] != "connected":
+            raise BenchError("Bus monitor is not declared connected; check wiring and harness/current.yaml")
+        result = self._request(f"MEASURE_BUS {duration_ms}", "bus_activity")
+        return {**result, "wiring_source": "user_declared",
+                "sda_net": monitor["sda_net"], "scl_net": monitor["scl_net"]}

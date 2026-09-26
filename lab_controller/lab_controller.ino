@@ -7,8 +7,12 @@ static char line[MAX_COMMAND_LENGTH + 1];
 static size_t lineLength = 0;
 static bool overflow = false;
 static volatile uint32_t risingEdges = 0;
+static volatile uint32_t sdaTransitions = 0;
+static volatile uint32_t sclTransitions = 0;
 
 void IRAM_ATTR countRisingEdge() { risingEdges++; }
+void IRAM_ATTR countSdaTransition() { sdaTransitions++; }
+void IRAM_ATTR countSclTransition() { sclTransitions++; }
 
 const ProbeConfig *findProbe(const char *name) {
   for (size_t i = 0; i < PROBE_COUNT; ++i) {
@@ -55,6 +59,35 @@ void measureFrequency(const ProbeConfig &probe, uint32_t windowMs) {
                 static_cast<unsigned long>(pulseUs));
 }
 
+void measureBusActivity(uint32_t windowMs) {
+  // These interrupt counts reveal activity or a static line. They are not a
+  // logic-analyzer trace and can undercount fast edges at high bus rates.
+  const bool sdaStart = digitalRead(BUS_SDA_GPIO);
+  const bool sclStart = digitalRead(BUS_SCL_GPIO);
+  noInterrupts();
+  sdaTransitions = 0;
+  sclTransitions = 0;
+  interrupts();
+  attachInterrupt(digitalPinToInterrupt(BUS_SDA_GPIO), countSdaTransition, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(BUS_SCL_GPIO), countSclTransition, CHANGE);
+  const uint32_t start = millis();
+  delay(windowMs);
+  const uint32_t elapsed = millis() - start;
+  detachInterrupt(digitalPinToInterrupt(BUS_SDA_GPIO));
+  detachInterrupt(digitalPinToInterrupt(BUS_SCL_GPIO));
+  noInterrupts();
+  const uint32_t sdaCount = sdaTransitions;
+  const uint32_t sclCount = sclTransitions;
+  interrupts();
+  const bool sdaEnd = digitalRead(BUS_SDA_GPIO);
+  const bool sclEnd = digitalRead(BUS_SCL_GPIO);
+  Serial.printf("OK BUS SDA %s %s EDGES %lu SCL %s %s EDGES %lu WINDOW_MS %lu\n",
+                sdaStart ? "HIGH" : "LOW", sdaEnd ? "HIGH" : "LOW",
+                static_cast<unsigned long>(sdaCount),
+                sclStart ? "HIGH" : "LOW", sclEnd ? "HIGH" : "LOW",
+                static_cast<unsigned long>(sclCount), static_cast<unsigned long>(elapsed));
+}
+
 void processLine(char *command) {
   char *save = nullptr;
   char *verb = strtok_r(command, " \t", &save);
@@ -65,12 +98,22 @@ void processLine(char *command) {
   for (char *p = verb; *p; ++p) *p = toupper(static_cast<unsigned char>(*p));
   if (strcmp(verb, "PING") == 0 && !probeName) { Serial.println("OK PONG"); return; }
   if (strcmp(verb, "HELP") == 0 && !probeName) {
-    Serial.println("OK HELP PING|INFO|READ_ADC <probe>|READ_DIGITAL <probe>|MEASURE_FREQ <probe> <10-2000ms>|HELP");
+    Serial.println("OK HELP PING|INFO|READ_ADC <probe>|READ_DIGITAL <probe>|MEASURE_FREQ <probe> <10-2000ms>|MEASURE_BUS <10-2000ms>|HELP");
     return;
   }
   if (strcmp(verb, "INFO") == 0 && !probeName) {
     Serial.printf("OK INFO BenchOS-S3 v0.1 PROBES %u ADC_SAMPLES %u\n",
                   static_cast<unsigned>(PROBE_COUNT), ADC_SAMPLES);
+    return;
+  }
+  if (strcmp(verb, "MEASURE_BUS") == 0) {
+    if (!probeName || arg || extra) { Serial.println("ERR BAD_ARGUMENTS"); return; }
+    char *end = nullptr;
+    const unsigned long ms = strtoul(probeName, &end, 10);
+    if (*end || ms < 10 || ms > MAX_FREQUENCY_WINDOW_MS) {
+      Serial.println("ERR BAD_WINDOW"); return;
+    }
+    measureBusActivity(ms);
     return;
   }
   if (!probeName || extra) { Serial.println("ERR BAD_ARGUMENTS"); return; }
@@ -103,6 +146,8 @@ void setup() {
     pinMode(PROBES[i].digitalPin, INPUT);  // Never drive measurement probes.
     analogSetPinAttenuation(PROBES[i].adcPin, ADC_11db);
   }
+  pinMode(BUS_SDA_GPIO, INPUT);  // No internal pullups; observe only.
+  pinMode(BUS_SCL_GPIO, INPUT);
 }
 
 void loop() {

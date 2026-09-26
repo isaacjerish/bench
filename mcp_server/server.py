@@ -66,6 +66,12 @@ def measure_voltage_pair() -> dict[str, Any]:
 
 
 @mcp.tool(structured_output=True)
+def measure_bus_activity(duration_ms: int = 1000) -> dict[str, Any]:
+    """Count approximate SDA/SCL transitions on declared 3.3 V read-only inputs; does not decode I²C."""
+    return _measure("measure_bus_activity", duration_ms)
+
+
+@mcp.tool(structured_output=True)
 def read_digital(probe: str) -> dict[str, Any]:
     """Read the current physical HIGH or LOW level of a probe."""
     return _measure("read_digital", probe)
