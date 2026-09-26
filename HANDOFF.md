@@ -22,7 +22,7 @@
   library now shows 9 unique captures instead of 12 duplicate entries.
 - Signal navigation targets the permanent taps when no I²C bus is declared.
   Preview/offline labels and save availability update correctly.
-- Verification: **103 Python tests + 9 Node UI tests passed**, including local
+- Verification before remote integration: **103 Python tests + 9 Node UI tests passed**, including local
   HTTP routes, malformed/stale/changed conditions, serial-fragment assembly,
   missing required output checks, and record deduplication. Browser checked
   source config, saved comparisons, serial filtering in labeled Preview, and
@@ -31,6 +31,11 @@
   new conditional capture path is host-tested, **not yet revalidated live**.
   Healthy physical light/water/LED evidence below remains historical. Firmware
   was not changed during this pass. Dashboard restarted on localhost:8765.
+- Integrated remote commit `2ca270b` (Grok voice debugging), preserving its
+  microphone controls, endpoints, worklet, docs, and tests alongside the
+  dashboard fixes. Corrected the voice wrapper to use the installed MCP SDK's
+  `structured_content` and `is_error` attributes. Voice transport itself has
+  not been exercised; it requires a configured xAI key and user-started audio.
 
 ## Active: ParcelGuard wiring checks pass (2026-09-26)
 

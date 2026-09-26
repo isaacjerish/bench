@@ -172,7 +172,7 @@ def invoke_voice_tool(name: str, arguments: dict) -> dict:
     from mcp_server.server import mcp
 
     result = asyncio.run(mcp.call_tool(name, arguments))
-    structured = getattr(result, "structuredContent", None)
+    structured = result.structured_content
     if structured is not None:
         data = structured
     else:
@@ -183,7 +183,7 @@ def invoke_voice_tool(name: str, arguments: dict) -> dict:
                 data = json.loads(data[0].get("text", ""))
             except json.JSONDecodeError:
                 pass
-    return {"ok": not bool(getattr(result, "isError", False)), "result": data}
+    return {"ok": not result.is_error, "result": data}
 
 
 def create_voice_token() -> dict:

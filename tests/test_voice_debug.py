@@ -21,6 +21,19 @@ def test_voice_tool_schemas_exclude_firmware_write_tools():
     assert "flash_dut" not in names
 
 
+@pytest.mark.parametrize('failed', [False, True])
+def test_voice_wrapper_preserves_sdk_structured_result_and_error(monkeypatch, failed):
+    from mcp.types import CallToolResult
+    from mcp_server.server import mcp
+
+    async def call(*_args):
+        return CallToolResult(content=[], structured_content={'evidence': 'test fixture'}, is_error=failed)
+
+    monkeypatch.setattr(mcp, 'call_tool', call)
+    result = invoke_voice_tool('lab_ping', {})
+    assert result == {'ok': not failed, 'result': {'evidence': 'test fixture'}}
+
+
 def test_voice_tool_execution_rejects_write_and_unlisted_source(monkeypatch):
     with pytest.raises(ValueError, match="not enabled"):
         invoke_voice_tool("build_and_flash_dut", {})
