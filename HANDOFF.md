@@ -21,7 +21,7 @@ real hardware results. The key directories are:
 - `scripts/`: board detection, flashing, and test commands.
 - `tests/`: Python unit tests.
 
-## Current physical state (2026-09-25, US Eastern)
+## Current physical state (2026-09-26, US Eastern)
 
 - S3 lab controller: `/dev/cu.usbmodem1201` on the original Mac.
 - C6 DUT: `/dev/cu.usbmodem1101` on the original Mac. These port names can change.
@@ -31,6 +31,11 @@ real hardware results. The key directories are:
   photoresistor connects C6 3V3 to T; a separate 10 kΩ resistor connects T to
   shared GND; C6 GPIO1 also measures T. The S3 P1 divider remains in place.
 - C6 currently runs `light_sensor_demo` with `DEMO_FAULT=0`.
+- Both USB boards were present on 2026-09-26. The live `light-compare` check
+  passed: S3 P1 measured 2.177 V, C6 reported 2.249 V, a 0.072 V difference
+  against the configured 0.45 V tolerance. The dashboard server was listening
+  on `127.0.0.1:8765` at that time. These are point-in-time observations;
+  re-run the command below after changing wiring or restarting the computer.
 - SG90 is **not connected**. It needs a separate regulated 5 V supply rated for
   at least 2 A with accessible +5 V and GND. The Elegoo breadboard module has
   a newly located barrel wall plug. Its front is marked `Vin: 6.5V-9V` with
@@ -64,6 +69,63 @@ real hardware results. The key directories are:
 - The S3 CLI worked while the dashboard was running using a shared serial lock.
   MCP now has named `check_circuit` profiles and `read_imu_stream` (DUT claim
   only until the I²C bus is physically probed).
+
+## What BenchOS can diagnose today
+
+BenchOS has **one physical test point, P1**, with an approximate 0–3.3 V ADC
+measurement, an instantaneous HIGH/LOW read, a rising-edge frequency count,
+and one high-pulse-width measurement. The agent can run named rail, ground,
+LED, and servo-signal pass/fail checks and compare a C6 light-sensor claim
+against S3's independent measurement. This is a working electrical-debugging
+MVP for known nodes, not an automatic scan of a breadboard.
+
+| Symptom / deliberate fault | What P1 can establish | What still needs checking |
+| --- | --- | --- |
+| C6 says the LED should blink, but P1 sees 0 edges | The selected physical node is not toggling | Probe the intended GPIO, wire, and shared ground to distinguish wrong pin from disconnection |
+| Servo firmware claims 50 Hz, but P1 reads about 312 Hz | The physical PWM timing fails the servo profile | Correct the PWM configuration and remeasure; motor motion remains untested |
+| PWM node is held near 0 V and `LOW` | The output is stuck low at that node | Check firmware duty/output enable and then the connection |
+| C6 light reading says 0 V, but S3 sees about 2.2 V | The reported sensor value disagrees with the physical node | Inspect C6 ADC pin/configuration and report path |
+| P1 reads about 3.26 V on a 3V3 rail or 0 V on GND | The probed rail/node passes its configured voltage check | This does not measure current, ripple, or behavior under servo load |
+
+The wrong-pin, stuck-low, wrong-frequency, false-zero light reading, and
+repaired cases above were physically demonstrated; see `VALIDATION.md` for
+recorded measurements. A zero-edge reading alone does not identify a unique
+root cause. BenchOS cannot yet map unknown wiring, capture/decode I²C, inspect
+multiple nodes simultaneously, measure current or 5 V directly, or confirm
+SG90 shaft movement. `read_imu_stream` is a C6 report until the MPU is wired
+and tested; it is not independent S3 confirmation. The P1 ADC is approximate,
+and P1 must never touch a node above 3.3 V.
+
+## Next physical step: add the MPU while keeping light validation working
+
+The MPU board photographed by the user is marked `MPU-9250/6500/9255`;
+its exact chip has not been identified. First check that **C6 GPIO6/IO6 and
+GPIO7/IO7 are exposed and unused**. With both ESP32 USB cables disconnected,
+add these wires; keep the current photoresistor, test row T, and P1 divider
+untouched:
+
+| MPU pin | C6 / breadboard connection |
+| --- | --- |
+| VCC | C6 3V3 |
+| GND | Shared GND rail |
+| SDA/SDI | C6 GPIO6/IO6 |
+| SCL/SCLK | C6 GPIO7/IO7 |
+| ADO/SDO | Shared GND rail |
+| NCS | C6 3V3 |
+
+Leave EDA, ECL, INT, and FSYNC open. Reconnect USB after checking the pin
+labels and wiring. Do not feed this breakout 5 V or the 9 V barrel input.
+Then flash `imu_demo`, read the detected I²C address/WHO_AM_I and acceleration,
+and tilt the board to confirm that the axes change. If IO6 or IO7 is absent or
+already occupied, inspect the board labels and change both the firmware pin
+definitions and wiring before flashing. Full procedure and failure cases are
+in `dut_examples/imu_demo/README.md`.
+
+For the SG90 motion demo, obtain a separately regulated 5 V supply with
+accessible +5 V and GND and adequate servo current. The found Elegoo module
+and 9 V barrel adapter have not been verified as suitable. Do not connect the
+servo red wire yet. The previously tested PWM-only demo can be restored at
+any time by clearing T of the light sensor branch and moving C6 GPIO20 to T.
 
 ## Fast commands on the original Mac
 
