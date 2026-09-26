@@ -138,6 +138,12 @@ function evaluate(sample) {
     state:'fail', label:'DATA PATH NEEDS CHECK', title:'Clock moved; data stayed static.',
     detail:'The S3 counted ' + latestBus.scl.edges + ' clock transitions and zero data transitions at the declared monitor points.',
     next:'Check the declared data row and its sense branch, then capture again.'};
+  const freshError = !preview && [...serialEvents].reverse().find(item =>
+    /(?:^|[\s_])(ERROR|FAIL)(?:[\s_:]|$)/i.test(item.line) &&
+    Math.abs(Date.parse(item.timestamp) - Date.parse(sample.timestamp)) <= 10000);
+  if (freshError) return {state:'fail', label:'DUT REPORTED ERROR', title:'The device reports a fault.',
+    detail:'Fresh DUT serial output: ' + freshError.line + '. The S3 values above describe only the probed nodes.',
+    next:'Use probe and bus readings to narrow the physical cause, then repeat after the repair.'};
   if (comparisons.length) return {state:'pass', label:'REPORTS AGREE WITH PROBES', title:'Independent readings agree.', detail:comparisons.length + ' declared serial field' + (comparisons.length === 1 ? '' : 's') + ' matched fresh S3 probe readings within configured tolerance.', next:'Change one input or introduce a reversible fault, then capture both sources again.'};
   if (checks.length) return {state:'pass', label:'PHYSICAL TARGETS MET', title:'Checked nodes are in range.', detail:checks.length + ' declared target' + (checks.length === 1 ? '' : 's') + ' matched the S3 readings. This says nothing about unprobed parts of the design.', next:'Sample during the failing behavior, then inspect the device serial output or move a probe to a discriminating node.'};
   return {state:'observed', label:'PHYSICAL VALUES CAPTURED', title:sample.readings.length + ' nodes measured.', detail:'The S3 recorded the connected probe voltages. Add expected ranges to get a bounded pass/fail check for this design.', next:'Declare a target voltage range or compare readings before and after a controlled stimulus.'};
@@ -160,7 +166,8 @@ function renderAssessment() {
   } else evidence.push('Waiting for an S3 probe measurement.');
   if (latestBus) evidence.push((preview ? 'Preview bus sample: ' : 'S3 bus inputs: ') +
     'SDA ' + latestBus.sda.edges + ' edges, SCL ' + latestBus.scl.edges + ' edges in ' + latestBus.window_ms + ' ms; transactions not decoded.');
-  const recentError = [...serialEvents].reverse().find(item => /ERROR|FAIL/i.test(item.line));
+  const recentError = latestSample && [...serialEvents].reverse().find(item =>
+    /ERROR|FAIL/i.test(item.line) && Math.abs(Date.parse(item.timestamp) - Date.parse(latestSample.timestamp)) <= 10000);
   if (recentError) evidence.push('DUT serial reported: ' + recentError.line);
   const list = el('evidence-list'); list.replaceChildren();
   for (const line of evidence) { const item = document.createElement('li'); item.textContent = line; list.append(item); }

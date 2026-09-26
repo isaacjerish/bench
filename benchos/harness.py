@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from datetime import date
+import math
 import os
 import re
 import tempfile
@@ -54,6 +55,8 @@ def describe_harness(path: Path = HARNESS_FILE) -> dict:
             raise ValueError("Telemetry rule needs numeric scale and tolerance")
         if not 0 < rule["scale_to_v"] <= 1 or not 0 <= rule["max_delta_v"] <= 3.3:
             raise ValueError("Telemetry comparison scale or tolerance is out of range")
+        if not math.isfinite(rule["scale_to_v"]) or not math.isfinite(rule["max_delta_v"]):
+            raise ValueError("Telemetry comparison values must be finite")
     if data.get("voltage_limit_v") != 3.3:
         raise ValueError("Harness voltage limit must be 3.3 V")
     return {**data, "source": "user_declared", "physically_verified": False}
