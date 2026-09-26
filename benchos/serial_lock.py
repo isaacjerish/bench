@@ -1,13 +1,17 @@
-"""Cooperate across BenchOS processes sharing a USB serial port on macOS/Linux."""
+"""Cooperate across BenchOS processes sharing a USB serial port."""
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import os
 import tempfile
 import time
 from pathlib import Path
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 
 from .protocol import BenchError
 
@@ -24,13 +28,26 @@ class SerialPortLock:
         if self._fd is not None:
             return
         fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+        # msvcrt.locking locks a byte range, so ensure byte zero exists.
+        if os.name == "nt" and os.fstat(fd).st_size == 0:
+            os.write(fd, b"\0")
+            os.lseek(fd, 0, os.SEEK_SET)
         deadline = time.monotonic() + self.timeout_s
         while True:
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if os.name == "nt":
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                else:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 self._fd = fd
                 return
-            except BlockingIOError:
+            except (BlockingIOError, OSError) as exc:
+                contended = isinstance(exc, BlockingIOError)
+                if os.name == "nt" and isinstance(exc, OSError):
+                    contended = exc.errno in (13, 36) or getattr(exc, "winerror", None) == 33
+                if not contended:
+                    os.close(fd)
+                    raise
                 if time.monotonic() >= deadline:
                     os.close(fd)
                     raise BenchError(f"Serial port {self.port} is busy; retry shortly")
@@ -41,7 +58,11 @@ class SerialPortLock:
 
     def release(self) -> None:
         if self._fd is not None:
-            fcntl.flock(self._fd, fcntl.LOCK_UN)
+            if os.name == "nt":
+                os.lseek(self._fd, 0, os.SEEK_SET)
+                msvcrt.locking(self._fd, msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(self._fd, fcntl.LOCK_UN)
             os.close(self._fd)
             self._fd = None
 

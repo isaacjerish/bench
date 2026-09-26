@@ -75,6 +75,26 @@ python3 -m venv .venv
 ./scripts/python.sh -m pip install -e '.[mcp,dev]'
 ```
 
+On Windows, open PowerShell in the `bench` directory and use:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[mcp,dev]"
+```
+
+The Python CLI and dashboard work on Windows and macOS. To start the dashboard
+on Windows, run:
+
+```powershell
+.\.venv\Scripts\python.exe -m benchos.dashboard
+```
+
+On either platform, open <http://127.0.0.1:8765>. Select connected serial
+ports in the dashboard, or pass explicit ports with `--lab-port` and
+`--dut-port` (for example, Windows ports such as `COM3` and `COM4`). The
+`scripts/*.sh` convenience wrappers below are for macOS/Linux shells; Windows
+users can invoke the virtual-environment Python directly.
+
 Install [Arduino CLI](https://arduino.github.io/arduino-cli/latest/installation/)
 and Espressif's Arduino core 3.x if absent. On the original Mac, an isolated
 Arduino CLI config exists at `scripts/arduino-cli.yaml`; its absolute paths are
