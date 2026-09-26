@@ -28,8 +28,8 @@ photo may help propose hypotheses, but electrical readings remain the proof.
 | --- | --- | --- |
 | P1/P2 DC voltage, digital level, edge count, pulse width | Live 3.3 V/GND, LED, PWM, light, and MPU-supply readings in `VALIDATION.md` | More points, better input protection and calibration; current probes only accept known 0–3.3 V nodes and load the net |
 | C6 serial output and source view | Live MPU serial lines; local file hashes and Git revision | Reliable mapping from source/build to flashed binary; protocol-independent capture and parsing |
-| I²C observation | S3 IO8/IO9 firmware booted and user wired separate 10 kΩ series sense branches; both inputs read HIGH with zero edges while the C6 continued reading its MPU | Inspect sense contacts and validate edge capture; edge count is not transaction decode |
-| DUT flashing | `scripts/flash_dut.sh` compiles and uploads one of four demos | Agent tool for an arbitrary declared sketch, board/port identity, bounded logs, postflash identity and regression test |
+| I²C observation | IO8/IO9 grounded and common-SCL checks passed; restored SDA/SCL counted 508/1,935 transitions in 2 s with C6 serial open | Timed capture and I²C address/ACK decode; better input protection |
+| DUT flashing | Generic `build-dut`, `flash-dut`, and MCP `build_and_flash_dut` compiled and flashed declared `imu_demo` to the unique C6 USB serial; Arduino verified flash hashes | Automatic boot marker, build identity, and declared postflash electrical checks |
 | Physical checks | Named fixed demo profiles | User-defined expectations tied to net names, design version, and measured evidence |
 | Active tests, current, 5 V, unknown nodes | None | Separate protected hardware; existing S3 inputs must not be repurposed as outputs |
 
@@ -37,20 +37,22 @@ photo may help propose hypotheses, but electrical readings remain the proof.
 
 ### 1. Agent-controlled DUT flashing and evidence records (software first)
 
-Add a typed `build_and_flash_dut` tool and CLI command. The design manifest
-declares the sketch path, board FQBN, unique USB identity when available,
-expected boot marker, and physical checks. The tool will:
+The typed `build_and_flash_dut` MCP tool and CLI build/flash commands are
+implemented and physically exercised. The design manifest declares the sketch
+path, board FQBN, and unique USB identity. Current implementation:
 
 - Reject paths outside the selected project and refuse the S3 instrument port.
-- Discover the DUT again immediately before upload and check board/chip identity
-  when the transport supports it; refuse ambiguity after port renumbering.
-- Record source Git revision and dirty-file hashes, compile to an isolated build
-  directory, retain build/upload logs and artifact hashes, then upload.
-- Observe the DUT after reboot and run the same bounded physical check used
-  before flashing. Report compile, upload, boot, and electrical outcomes
-  separately. A successful upload is not proof that the circuit works.
-- If the DUT cannot identify its running build, label flashed identity
-  **unverified** rather than equating it with source on disk.
+- Rediscovers the DUT USB serial and VID/PID immediately before upload and
+  refuses ambiguous or missing identities after port renumbering.
+- Records source Git revision, sketch dirty state, source hash, build/upload
+  logs, and artifact hashes in an isolated evidence directory.
+- Reports compilation and upload separately; flashed firmware identity and
+  whole-circuit function remain explicitly **unverified**.
+
+Next: add a per-design boot marker and bounded postflash probe checks, then
+capture those outcomes in the same evidence record. The current C6 sketch
+was manually observed after a verified upload: fresh IMU serial data, 3.217 V
+sensor supply, and SDA/SCL activity. This observation is in `VALIDATION.md`.
 
 Acceptance: intentionally wrong DUT port is refused; a compile failure leaves
 the current firmware running; a known-good C6 sketch flashes, reports its build

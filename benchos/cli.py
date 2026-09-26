@@ -10,7 +10,7 @@ from .checks import run_suite
 from .client import BenchClient
 from .light import compare_light
 from .harness import describe_harness
-from .flash import plan_dut_flash
+from .flash import plan_dut_flash, build_dut_firmware
 from .ports import available_ports
 from .protocol import BenchError
 
@@ -23,6 +23,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("list", "ping", "info", "harness", "flash-plan"):
         sub.add_parser(name)
+    sub.add_parser("build-dut", help="Compile the declared DUT sketch into an evidence directory")
+    sub.add_parser("flash-dut", help="Compile and upload only to the enrolled DUT USB identity")
     for name in ("voltage", "digital"):
         sub.add_parser(name).add_argument("probe")
     sub.add_parser("pair-voltage", help="Read P1 then P2, close in time but not simultaneously")
@@ -56,6 +58,15 @@ def main(argv: list[str] | None = None) -> int:
         try:
             print(json.dumps(plan_dut_flash(), indent=2))
             return 0
+        except (OSError, ValueError) as exc:
+            print(f"Benchy error: {exc}", file=sys.stderr)
+            return 2
+    if args.command in ("build-dut", "flash-dut"):
+        try:
+            result = build_dut_firmware(flash=args.command == "flash-dut")
+            print(json.dumps(result, indent=2))
+            return 0 if result["compile"]["ok"] and (args.command == "build-dut" or
+                    result["upload"] and result["upload"]["ok"]) else 1
         except (OSError, ValueError) as exc:
             print(f"Benchy error: {exc}", file=sys.stderr)
             return 2

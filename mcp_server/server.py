@@ -11,7 +11,7 @@ from benchos.light import compare_light
 from benchos.checks import run_suite
 from benchos.dashboard import read_imu_report
 from benchos.harness import describe_harness as read_harness
-from benchos.flash import plan_dut_flash as read_flash_plan
+from benchos.flash import plan_dut_flash as read_flash_plan, build_dut_firmware
 from benchos.protocol import BenchError
 
 mcp = MCPServer("benchos", instructions=(
@@ -60,6 +60,21 @@ def plan_dut_flash() -> dict[str, Any]:
     try:
         return {"ok": True, **read_flash_plan()}
     except (OSError, ValueError, yaml.YAMLError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool(structured_output=True)
+def build_and_flash_dut() -> dict[str, Any]:
+    """Compile and upload the declared sketch to its unique enrolled DUT USB device.
+
+    Returns separate compile/upload evidence. Neither a successful upload nor
+    local source identity proves the running code or physical circuit.
+    """
+    try:
+        result = build_dut_firmware(flash=True)
+        return {"ok": bool(result["compile"]["ok"] and result["upload"]
+                           and result["upload"]["ok"]), **result}
+    except (OSError, ValueError) as exc:
         return {"ok": False, "error": str(exc)}
 
 

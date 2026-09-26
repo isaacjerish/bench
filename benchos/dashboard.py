@@ -249,16 +249,50 @@ class DashboardState:
         pair["voltage_limit_v"] = 3.3
         return pair
 
-    def bus_sample(self, port: str, duration_ms: int) -> dict:
-        if port not in set(candidate_ports()):
+    def bus_sample(self, port: str, duration_ms: int, dut_port: str = "") -> dict:
+        known = set(candidate_ports())
+        if port not in known:
             raise ValueError("S3 port is not currently available")
+        if dut_port and (dut_port not in known or dut_port == port):
+            raise ValueError("DUT serial port is not a distinct available device")
         if isinstance(duration_ms, bool) or not 100 <= duration_ms <= 2000:
             raise ValueError("Bus sample window must be 100–2000 ms")
+        stream_error = []
+        stream_ready = threading.Event()
+        stream_stop = threading.Event()
+
+        def drain_dut() -> None:
+            try:
+                with SerialPortLock(dut_port), serial.Serial(dut_port, 115200, timeout=0.1,
+                                                            write_timeout=0.25) as dut:
+                    stream_ready.set()
+                    while not stream_stop.is_set():
+                        line = dut.readline().decode("utf-8", errors="replace").strip()
+                        if line:
+                            self._record_serial(line)
+            except (BenchError, serial.SerialException, OSError) as exc:
+                stream_error.append(str(exc))
+                stream_ready.set()
+
         with self._lock:
-            with BenchClient(port, timeout=4.0) as client:
-                result = client.measure_bus_activity(duration_ms)
+            # Some DUT sketches pause their serial logging (and therefore their
+            # I/O loop) when USB CDC has no reader. Keep the DUT stream drained
+            # while the independent S3 samples the physical bus.
+            reader = threading.Thread(target=drain_dut, daemon=True) if dut_port else None
+            if reader:
+                reader.start()
+                stream_ready.wait(1.5)
+            try:
+                with BenchClient(port, timeout=4.0) as client:
+                    result = client.measure_bus_activity(duration_ms)
+            finally:
+                stream_stop.set()
+                if reader:
+                    reader.join(timeout=1.0)
         return {**result, "timestamp": datetime.now(timezone.utc).isoformat(),
-                "source": "s3_physical", "decoded_transactions": False}
+                "source": "s3_physical", "decoded_transactions": False,
+                "dut_stream_open_during_capture": bool(reader and stream_ready.is_set() and not stream_error),
+                **({"dut_stream_error": stream_error[0]} if stream_error else {})}
 
     def close(self) -> None:
         pass
@@ -352,9 +386,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if route.path == "/api/bus":
             query = parse_qs(route.query)
             port = query.get("lab_port", [""])[0]
+            dut_port = query.get("dut_port", [""])[0]
             try:
                 duration_ms = int(query.get("duration_ms", ["1000"])[0])
-                self._json(self.server.state.bus_sample(port, duration_ms))
+                self._json(self.server.state.bus_sample(port, duration_ms, dut_port))
             except ValueError as exc:
                 self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             except (BenchError, OSError) as exc:

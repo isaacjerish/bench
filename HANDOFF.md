@@ -120,17 +120,25 @@ real hardware results. The key directories are:
   and P1/P2 continued reading normally after upload. The user attached IO8
   through a 10 kΩ series resistor to MPU SDA and IO9 through another 10 kΩ
   resistor to SCL. The harness records this **user-declared** wiring. Initial
-  1 s and 2 s samples returned HIGH/HIGH with zero edges, while the C6 still
-  reported live MPU readings. This does not validate transition capture or
-  prove a bus fault; the sense rows and capture path need checking when the
-  user returns. Arduino CLI reported a serial-stream verification error after
+  zero-edge samples were inconclusive. IO8 read LOW when grounded through its
+  resistor; both IO8 and IO9 counted 241 transitions when temporarily sensing
+  the same SCL row. Once IO8 was restored to SDA and the C6 serial stream was
+  held open during capture, both lines showed activity (508/1,935 transitions
+  over 2 s). Arduino CLI reported a serial-stream verification error after
   writing the image; the subsequent live command and probe checks prove that
   the new firmware booted, but do not prove binary readback verification.
 - The dashboard now opens in Live mode, selects the S3 and C6 by USB serial
   identity, and shows P1/P2, read-only bus activity, sampled C6 serial output,
   and current local source. Live APIs returned P1 2.548 V, P2 3.220 V,
-  SDA/SCL zero counted edges, and `IMU_RAW`/`IMU_ACCEL_G` lines on the current
-  wiring. The bus panel explicitly labels zero edges inconclusive.
+  SDA/SCL activity, and `IMU_RAW`/`IMU_ACCEL_G` lines on the current wiring.
+  The bus panel labels zero edges inconclusive when the DUT is idle.
+- The new generic `build-dut` and `flash-dut` CLI commands and MCP
+  `build_and_flash_dut` tool use the declared sketch and stable C6 USB serial.
+  A real build and flash of `imu_demo` completed with Arduino's verified hash
+  report. After reboot the C6 produced fresh IMU data; S3 read MPU VCC at
+  3.217 V and later measured SDA/SCL at 502/1,936 edges over 2 s. Evidence
+  logs and binary hashes are under `work/flash-runs/` outside this repo.
+  Running-build identity and whole-circuit function remain unverified.
 
 ## What Benchy can diagnose today
 

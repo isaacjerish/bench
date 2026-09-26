@@ -183,8 +183,19 @@ Named demo checks remain available through the CLI and MCP tools. Edit
 files; use the page's connection editor for P1/P2 declarations.
 
 `./scripts/python.sh -m benchos.cli flash-plan` resolves the declared DUT
-sketch and unique USB device without uploading anything. A generic agent
-build/flash action with postflash electrical checks is still under development.
+sketch and unique USB device without uploading anything. `build-dut` compiles
+the declared sketch into an isolated evidence directory; `flash-dut` also
+rechecks the DUT's USB identity immediately before a verified upload. The MCP
+server exposes `build_and_flash_dut` for the same declared target. Evidence
+includes source and binary hashes, Git state, bounded logs, and separate
+compile/upload outcomes. A successful upload does not prove running firmware
+identity or circuit behavior; check the boot stream and independent probes
+afterward. Automatic postflash electrical checks are still in development.
+
+The bus panel counts physical SDA/SCL transitions only when the declared
+3.3 V sense leads are connected. When a DUT port is selected, the dashboard
+keeps that serial stream open during the S3 capture so serial-dependent DUT
+loops remain active. Edge counts do not decode I²C addresses or ACKs.
 
 The visual direction draws on the [shadcn/ui dashboard examples](https://ui.shadcn.com/examples/dashboard),
 [Anthropic's frontend-design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md),

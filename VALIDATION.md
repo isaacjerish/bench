@@ -61,6 +61,13 @@ not mocked values.
 | Concurrent C6 behavior | C6 reported `WHO_AM_I=0x70` and about 1.088 g while S3 bus inputs counted zero edges. This shows the DUT still communicates with its MPU, but does not identify why the sense inputs were static. |
 | Live generic dashboard API and browser | Auto-selected boards by stable USB serial; API returned P1 2.548 V, P2 3.220 V, S3 bus HIGH/HIGH with zero edges, and real `IMU_RAW`/`IMU_ACCEL_G` lines. Browser showed those as live physical/serial evidence with bus result marked inconclusive. |
 | Host tests after live bus dashboard | 38 passed with local loopback access |
+| IO8 grounded-input isolation | With IO8 connected to GND through its 10 kΩ sense resistor, S3 read SDA LOW; IO9 simultaneously counted 242 SCL transitions in 1 s. The firmware input and IO9 clock path respond. |
+| Both inputs temporarily on SCL | Concurrent C6 serial plus S3 bus capture counted 241 transitions on both IO8 and IO9 in 2 s. This confirmed IO8 edge counting. |
+| Restored SDA/SCL, synchronized capture | Dashboard held the C6 serial stream open while S3 captured 508 SDA and 1,935 SCL transitions in 2 s. The sense branches now show physical activity, without decoding transactions. |
+| Generic declared-sketch build | `build-dut` compiled `imu_demo` into an isolated evidence directory; source hash, Git revision, compile log, and binary hashes were recorded. No upload in this step. |
+| Generic enrolled-DUT flash | `flash-dut` compiled, rediscovered C6 USB serial `A0:85:E3:DA:BD:80`, uploaded only to `/dev/cu.usbmodem5`, and Arduino reported verified flash hashes. C6 then produced fresh IMU data. |
+| Independent postflash checks | S3 measured MPU VCC at 3.217 V, then counted 502 SDA and 1,936 SCL transitions in 2 s while the C6 serial stream was open. This proves power and bus activity at the declared nodes, not the exact running binary or full circuit behavior. |
+| Host tests after flash and synchronized capture | 39 passed, 1 sandbox socket test skipped; JavaScript syntax and Git whitespace checks passed. |
 
 The resistor divider is nominally 1:2. These values show a working physical
 measurement loop, but the ADC and resistor tolerances do not make it a
@@ -86,7 +93,8 @@ available via `./scripts/python.sh -m benchos.dashboard` when started; do not
 assume the previous process is still running. `read_imu_stream` returns the
 C6's claim rather than physical proof from P1.
 
-The generic dashboard now has new live physical P1/P2 and bus-input samples.
-The IO8/IO9 path is wired and its static HIGH state was observed, but its edge
-capture has not passed an acceptance test. The original read-only bus monitor
-does not decode I²C traffic.
+The generic dashboard now has live physical P1/P2 and bus-input samples.
+The IO8/IO9 path passed grounded-input and common-SCL checks, then counted
+transitions on the restored SDA/SCL branches. The read-only bus monitor does
+not decode I²C traffic. Its capture should keep the DUT serial stream open
+for sketches that pause their I/O loop without a serial reader.

@@ -217,7 +217,8 @@ function renderBus(sample) {
     setText('bus-title', 'Both lines show activity.');
     setText('bus-detail', 'The S3 observed transitions on both declared inputs. Transaction contents and ACK/NACK remain unverified until timed capture is built.');
   }
-  setText('bus-status', (sample.source === 'preview' ? 'PREVIEW · SAMPLE DATA' : 'S3 PHYSICAL · APPROXIMATE COUNT') + ' · ' + timeLabel(sample.timestamp));
+  const stream = sample.dut_stream_open_during_capture ? ' · DUT STREAM HELD OPEN' : '';
+  setText('bus-status', (sample.source === 'preview' ? 'PREVIEW · SAMPLE DATA' : 'S3 PHYSICAL · APPROXIMATE COUNT') + stream + ' · ' + timeLabel(sample.timestamp));
   renderAssessment();
 }
 async function sampleBus() {
@@ -228,7 +229,7 @@ async function sampleBus() {
   if (!port) { setText('bus-status', 'Choose the identified S3 port.'); return; }
   busBusy = true; el('sample-bus').disabled = true; setText('bus-status', 'Counting read-only transitions…');
   try {
-    const response = await fetch('/api/bus?' + new URLSearchParams({lab_port:port,duration_ms:'1000'}), {cache:'no-store'});
+    const response = await fetch('/api/bus?' + new URLSearchParams({lab_port:port,dut_port:el('dut-port').value,duration_ms:'1000'}), {cache:'no-store'});
     const data = await response.json();
     if (!response.ok) throw Error(data.error || 'Bus sample failed');
     if (port === el('lab-port').value) renderBus(data);
