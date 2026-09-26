@@ -162,22 +162,22 @@ class BenchClient:
             raise ValueError("duration_ms must be an integer from 10 to 2000")
         return self._request(f"MEASURE_FREQ {validate_probe(probe)} {duration_ms}", "frequency")
 
-    def measure_bus_activity(self, duration_ms: int = 1000) -> dict:
+    def measure_bus_activity(self, duration_ms: int = 1000, *, monitor_declaration: dict | None = None) -> dict:
         """Observe declared read-only SDA/SCL inputs; edge counts are approximate."""
         if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or not 10 <= duration_ms <= 2000:
             raise ValueError("duration_ms must be an integer from 10 to 2000")
-        monitor = describe_harness()["bus_monitor"]
+        monitor = describe_harness()["bus_monitor"] if monitor_declaration is None else monitor_declaration
         if monitor["state"] != "connected":
             raise BenchError("Bus monitor is not declared connected; check wiring and harness/current.yaml")
         result = self._request(f"MEASURE_BUS {duration_ms}", "bus_activity")
         return {**result, "wiring_source": "user_declared",
                 "sda_net": monitor["sda_net"], "scl_net": monitor["scl_net"]}
 
-    def measure_digital_taps(self, duration_ms: int = 1000) -> dict:
+    def measure_digital_taps(self, duration_ms: int = 1000, *, tap_declarations: dict | None = None) -> dict:
         """Count five passive inputs together; pending inputs cannot support a diagnosis."""
         if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or not 10 <= duration_ms <= 2000:
             raise ValueError("duration_ms must be an integer from 10 to 2000")
-        declared = describe_harness().get("digital_taps", {})
+        declared = describe_harness().get("digital_taps", {}) if tap_declarations is None else tap_declarations
         if not any(item["state"] == "connected" for item in declared.values()):
             raise BenchError("No digital taps are declared connected; check harness/current.yaml")
         result = self._request(f"MEASURE_TAPS {duration_ms}", "digital_taps")

@@ -36,6 +36,11 @@
   async function compare() {
     const generation = ++selectionGeneration;
     $('record-comparison').replaceChildren();
+    $('record-context').replaceChildren();
+    for (const side of ['before', 'after']) {
+      $('record-' + side + '-meta').textContent = 'Opening…';
+      $('record-' + side + '-serial').textContent = 'Opening…';
+    }
     $('record-summary').textContent = 'Opening recorded evidence…';
     try {
       const [before, after] = await Promise.all([readSelected('before'), readSelected('after')]);
@@ -43,6 +48,7 @@
       for (const [side, record] of [['before', before], ['after', after]]) {
         $('record-' + side + '-meta').textContent = record ? date(record.timestamp) + ' · SHA ' + record.sha256.slice(0, 10) : 'No capture selected';
         $('record-' + side + '-serial').textContent = record && record.dut_lines.length ? record.dut_lines.join('\n') : 'No device output saved in this capture.';
+        if (record) renderContext(side, record);
       }
       const rows = window.BenchyModel.compareObservations(before && before.observations, after && after.observations);
       for (const row of rows) {
@@ -50,10 +56,19 @@
         const name = document.createElement('td'), title = document.createElement('strong'), subtitle = document.createElement('small');
         title.textContent = row.channel + ' · ' + (row.net || 'Unassigned'); subtitle.textContent = metric(row.metric);
         name.append(title, subtitle); tr.append(name);
-        for (const value of [format(row.before), format(row.after), row.delta == null ? '—' :
-          (row.delta > 0 ? '+' : '') + row.delta.toLocaleString(undefined, {maximumFractionDigits:3}) + (row.unit ? ' ' + row.unit : '')]) {
-          const cell = document.createElement('td'); cell.textContent = value; tr.append(cell);
+        for (const observation of [row.before, row.after]) {
+          const cell = document.createElement('td'); cell.textContent = format(observation);
+          if (observation) {
+            const when = document.createElement('small');
+            when.textContent = observation.timestamp ? new Date(observation.timestamp).toLocaleTimeString() : 'Time not saved';
+            when.title = observation.timestamp || 'This individual observation has no saved timestamp';
+            cell.append(when);
+          }
+          tr.append(cell);
         }
+        const delta = document.createElement('td');
+        delta.textContent = row.delta == null ? '—' : (row.delta > 0 ? '+' : '') + row.delta.toLocaleString(undefined, {maximumFractionDigits:3}) + (row.unit ? ' ' + row.unit : '');
+        tr.append(delta);
         tr.title = [row.before && row.before.detail, row.after && row.after.detail].filter(Boolean).join(' / ');
         $('record-comparison').append(tr);
       }
@@ -67,7 +82,38 @@
     } catch (error) { if (generation === selectionGeneration) $('record-summary').textContent = error.message; }
   }
 
+  function renderContext(side, record) {
+    const section = document.createElement('article'), title = document.createElement('strong');
+    title.textContent = side.toUpperCase() + ' · ' + record.title; section.append(title);
+    const context = record.source_context, source = context && context.after;
+    const lines = [record.note || 'No note saved.',
+      record.harness_snapshot_available ? 'Wiring declaration preserved with this capture.' : 'Full wiring declaration was not saved.',
+      source ? 'Local source: ' + (source.short_commit || 'revision unavailable') + (source.dirty ? ' · modified' : '') +
+        ' · ' + (source.files || []).length + ' file hashes. Recorded ' + date(source.recorded_at) + '.' : 'Local source hashes were not saved.'];
+    if (record.capture_span_s != null) lines.push('Capture span: ' + record.capture_span_s.toFixed(1) + ' s · sequential windows.' +
+      (record.capture_span_s > 15 ? ' Long capture: use the individual reading times below.' : ''));
+    if (source) lines.push('Local file state; flashed firmware identity is not verified.');
+    if (context && context.changed_during_capture) lines.push('Source changed during capture. Inspect both source inventories.');
+    if (record.harness_changed_during_capture) lines.push('Wiring declaration changed during capture. Measurements retain the original declaration.');
+    for (const error of record.capture_errors || []) lines.push('Partial capture · ' + error.stage + ': ' + error.message);
+    for (const line of lines) { const text = document.createElement('p'); text.textContent = line; section.append(text); }
+    const inspect = document.createElement('button'); inspect.type = 'button'; inspect.className = 'text-button';
+    inspect.textContent = 'Inspect saved context ↗';
+    inspect.addEventListener('click', () => {
+      $('capture-dialog-title').textContent = record.title;
+      $('capture-dialog-verdict').textContent = 'Recorded ' + date(record.timestamp);
+      $('capture-dialog-body').textContent = JSON.stringify(record, null, 2);
+      $('capture-dialog').showModal();
+    });
+    section.append(inspect); $('record-context').append(section);
+  }
+
   window.BenchyRecords = {
+    async selectSaved(id) {
+      await loadInventory();
+      $('record-after').value = id;
+      await compare();
+    },
     inspectSnapshot(item) {
       $('capture-dialog-title').textContent = 'Saved at ' + new Date(item.time).toLocaleString();
       $('capture-dialog-verdict').textContent = item.title + ' · assessment at capture time';

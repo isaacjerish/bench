@@ -58,9 +58,17 @@
     <section id="investigation" class="panel investigation"><header class="section-head"><div><span>04 / INVESTIGATION</span><h2>Evidence, then a next check.</h2></div><div class="head-actions"><button id="capture-button" class="small-button" type="button">Capture note</button><button id="export-session" class="small-button" type="button">Export session ↓</button></div></header><div class="evidence-grid"><div><span class="micro-label">OBSERVED</span><ul id="evidence-list"><li>Waiting for a measurement.</li></ul></div><div><span class="micro-label">NEXT USEFUL CHECK</span><p id="next-check">Take a paired reading on known safe nodes.</p><span class="micro-label">NOT YET ESTABLISHED</span><p id="uncertainty">Connections are declared, not discovered.</p></div></div><div class="timeline-head"><span>SESSION TIMELINE</span><button id="clear-session" class="text-button" type="button">Clear local history</button></div><div id="timeline" class="timeline"><p class="empty-state">Measurements will appear here as they arrive.</p></div></section>
     <section id="records" class="panel records-panel" aria-label="Saved measurement comparison">
       <header class="section-head"><div><span>RECORDED EVIDENCE / NOT LIVE</span><h2>What changed?</h2></div><button id="refresh-records" class="small-button" type="button">Refresh captures</button></header>
+      <form id="save-capture-form" class="capture-form">
+        <div><label for="capture-label">CAPTURE NAME</label><input id="capture-label" maxlength="100" required placeholder="e.g. Before checking the output wire"></div>
+        <div><label for="capture-note">WHAT CHANGED? <span>OPTIONAL</span></label><input id="capture-note" maxlength="2000" placeholder="Describe the physical or code change"></div>
+        <button id="save-capture" class="primary-button" type="submit" disabled>Save new capture ↗</button>
+        <p id="save-capture-status" role="status">Takes fresh readings and saves the wiring declaration, device output, and local source hashes on this computer.</p>
+        <p id="capture-availability"></p>
+      </form>
       <p id="records-status" class="panel-footnote">Loading saved observations…</p>
       <div class="record-selectors"><label for="record-before">BEFORE<select id="record-before"><option value="">Choose a capture…</option></select><small id="record-before-meta">No capture selected</small></label><label for="record-after">AFTER<select id="record-after"><option value="">Choose a capture…</option></select><small id="record-after-meta">No capture selected</small></label></div>
       <p id="record-summary" class="panel-footnote">Choose one or two captures to inspect their original readings.</p>
+      <div id="record-context" class="record-context"></div>
       <div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">CHANNEL / MEASUREMENT</th><th scope="col">BEFORE</th><th scope="col">AFTER</th><th scope="col">CHANGE</th></tr></thead><tbody id="record-comparison"></tbody></table></div>
       <p id="record-context-note" class="panel-footnote">Past observations remain separate from live measurements.</p>
       <details class="record-output"><summary>Device output saved with these captures</summary><div><pre id="record-before-serial">No capture selected.</pre><pre id="record-after-serial">No capture selected.</pre></div></details>

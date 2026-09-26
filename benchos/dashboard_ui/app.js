@@ -4,6 +4,7 @@ const model = window.BenchyModel;
 let probeHistory = {};
 let harness = null, latestSample = null, latestBus = null, latestTaps = null, inventory = null;
 let preview = false, auto = true, probeBusy = false, busBusy = false, serialBusy = false, serialPaused = false;
+let captureBusy = false;
 let serialSeq = 0, serialEvents = [], session = [];
 try {
   const saved = JSON.parse(localStorage.getItem('benchos-workspace-session-v2') || '[]');
@@ -74,6 +75,9 @@ function renderCoverage() {
   }
 }
 function renderFreshness() {
+  el('save-capture').disabled = preview || captureBusy || !el('lab-port').value;
+  setText('capture-availability', preview ? 'Leave Preview to save physical evidence.' :
+    !el('lab-port').value ? 'Connect the S3 to save a new capture. Saved captures remain available below.' : '');
   const stale = latestSample && !preview && !model.isFresh(latestSample.timestamp);
   for (const name of names) {
     el('probe-' + name.toLowerCase() + '-value').closest('.probe-card').dataset.stale = String(Boolean(stale));
@@ -297,7 +301,7 @@ function renderProbeSample(sample) {
   renderCoverage();
 }
 async function sampleProbes() {
-  if (probeBusy) return;
+  if (probeBusy || captureBusy) return;
   if (preview) { renderProbeSample(previewSample()); return; }
   const port = el('lab-port').value;
   if (!port) { setText('probe-status', 'Choose an S3 port before sampling.'); return; }
@@ -381,7 +385,7 @@ function renderTaps(sample) {
   renderCoverage();
 }
 async function sampleBus() {
-  if (busBusy) return;
+  if (busBusy || captureBusy) return;
   if (preview) { renderBus(previewBus()); return; }
   if (!harness || !harness.bus_monitor || harness.bus_monitor.state !== 'connected') return;
   const port = el('lab-port').value;
@@ -467,7 +471,7 @@ function renderSerial() {
   target.scrollTop = target.scrollHeight;
 }
 async function pollSerial() {
-  if (serialBusy || serialPaused) return;
+  if (serialBusy || serialPaused || captureBusy) return;
   if (preview) {
     if (!serialEvents.length) { serialEvents = ['BOOT: device ready', 'READING value=1.42'].map((line, index) => ({seq:index + 1, timestamp:new Date().toISOString(), line})); renderSerial(); }
     setText('serial-status', 'PREVIEW · sample output'); el('serial-live-dot').classList.remove('active'); return;
@@ -480,7 +484,7 @@ async function pollSerial() {
     const response = await fetch('/api/serial?' + query, {cache:'no-store'});
     const data = await response.json();
     if (!response.ok) throw Error(data.error || 'Serial sample failed');
-    if (port !== el('dut-port').value) return;
+    if (port !== el('dut-port').value || preview) return;
     serialSeq = data.latest_seq;
     if (data.events.length) { serialEvents.push(...data.events); serialEvents = serialEvents.slice(-400); renderSerial(); renderAssessment(); }
     setText('serial-status', port.split('/').at(-1) + ' · ' + data.sample_window_ms + ' ms window · ' + serialEvents.length + ' lines');
@@ -533,6 +537,27 @@ function togglePreview() {
   pollSerial();
 }
 
+async function saveNewCapture(event) {
+  event.preventDefault();
+  if (captureBusy || preview) return;
+  const payload = {lab_port:el('lab-port').value, dut_port:el('dut-port').value,
+    label:el('capture-label').value.trim(), note:el('capture-note').value};
+  if (!payload.lab_port || !payload.label) return;
+  captureBusy = true; el('save-capture').disabled = true;
+  setText('save-capture-status', 'Capturing physical inputs and device output…');
+  try {
+    const response = await fetch('/api/records', {method:'POST',
+      headers:{'Content-Type':'application/json','X-Benchy-Local':'1'}, body:JSON.stringify(payload)});
+    const record = await response.json();
+    if (!response.ok) throw Error(record.error || 'Capture failed');
+    setText('save-capture-status', 'Saved “' + record.title + '” on this computer' +
+      (record.capture_errors.length ? ' · partial capture; review recorded errors below.' : ' · selected as After below.'));
+    await window.BenchyRecords.selectSaved(record.id);
+  } catch (error) { setText('save-capture-status', 'Not saved: ' + error.message); }
+  finally { captureBusy = false; renderFreshness(); if (auto) sampleProbes(); }
+}
+
+el('save-capture-form').addEventListener('submit', saveNewCapture);
 el('preview-toggle').addEventListener('click', togglePreview);
 el('refresh-button').addEventListener('click', async () => { await loadHarness(); await Promise.all([loadPorts(), loadCode()]); if (auto) { sampleProbes(); sampleBus(); } pollSerial(); });
 for (const kind of ['lab', 'dut']) el(kind + '-port').addEventListener('change', event => {

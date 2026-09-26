@@ -192,6 +192,20 @@ def test_dashboard_serves_assets_and_snapshot_without_hardware(monkeypatch):
         with pytest.raises(HTTPError) as blocked:
             urlopen(base + "/api/records?id=../.env")
         assert blocked.value.code == 400
+        capture_body = json.dumps({"lab_port": "/dev/not-a-device", "label": "Check"}).encode()
+        with pytest.raises(HTTPError) as blocked:
+            urlopen(Request(base + "/api/records", data=capture_body,
+                            headers={"Content-Type": "application/json"}, method="POST"))
+        assert blocked.value.code == 403
+        with pytest.raises(HTTPError) as blocked:
+            urlopen(Request(base + "/api/records", data=capture_body,
+                            headers={"Content-Type": "application/json", "X-Benchy-Local": "1"}, method="POST"))
+        assert blocked.value.code == 400
+        monkeypatch.setattr(state, "capture_record", lambda _data: {"id": "dashboard/test.json", "is_live": False})
+        with urlopen(Request(base + "/api/records", data=capture_body,
+                             headers={"Content-Type": "application/json", "X-Benchy-Local": "1"}, method="POST")) as response:
+            assert response.status == 201
+            assert json.load(response)["is_live"] is False
         with urlopen(base + "/api/harness") as response:
             declaration = json.load(response)
             assert declaration["source"] == "user_declared"

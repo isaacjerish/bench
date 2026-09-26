@@ -1,0 +1,445 @@
+{
+  "schema_version": 1,
+  "kind": "benchy_capture",
+  "source": "dashboard_instrument_capture",
+  "label": "Dashboard capture validation",
+  "note": "Read-only capture while wiring is unchanged. Validates saving physical readings, wiring declaration, serial output, and local source context.",
+  "timestamp": "2026-09-26T20:11:47.902800+00:00",
+  "saved_at": "2026-09-26T20:13:49.663768+00:00",
+  "capture_ended_at": "2026-09-26T20:13:48.849151+00:00",
+  "simultaneous": false,
+  "lab_port": "/dev/cu.usbmodem1101",
+  "dut_port": "/dev/cu.usbmodem5",
+  "harness": {
+    "version": 1,
+    "declared_on": "2026-09-26",
+    "voltage_limit_v": 3.3,
+    "lab": {
+      "board": "ESP32-S3",
+      "usb_serial_number": "94:A9:90:DB:BA:64"
+    },
+    "dut": {
+      "board": "ESP32-C6",
+      "usb_serial_number": "A0:85:E3:DA:BD:80",
+      "serial_port_hint": "/dev/cu.usbmodem5",
+      "firmware": "plant_sentinel",
+      "sketch_path": "dut_examples/plant_sentinel",
+      "fqbn": "esp32:esp32:esp32c6:CDCOnBoot=cdc",
+      "connected_sensor": "photoresistor, water-level sensor, replacement MPU-6500-compatible breakout",
+      "sensor_sda": "C6 IO5",
+      "sensor_scl": "C6 IO7"
+    },
+    "source_files": [
+      "dut_examples/plant_sentinel/plant_sentinel.ino",
+      "dut_examples/plant_sentinel/config.h"
+    ],
+    "dut_pins": {
+      "IO1": {
+        "net": "LIGHT_SENSE",
+        "function": "Analog input"
+      },
+      "IO2": {
+        "net": "WATER_SENSE",
+        "function": "Analog input"
+      },
+      "IO5": {
+        "net": "MPU_SDA",
+        "function": "I²C data"
+      },
+      "IO7": {
+        "net": "MPU_SCL",
+        "function": "I²C clock"
+      },
+      "IO20": {
+        "net": "ALARM_DRIVE",
+        "function": "LED output"
+      }
+    },
+    "telemetry_checks": [
+      {
+        "probe": "P1",
+        "field": "light_mv",
+        "scale_to_v": 0.001,
+        "max_delta_v": 0.45
+      },
+      {
+        "probe": "P3",
+        "field": "water_mv",
+        "scale_to_v": 0.001,
+        "max_delta_v": 0.45
+      }
+    ],
+    "postflash": {
+      "serial_marker": "build=plant-sentinel-v1",
+      "timeout_s": 8,
+      "check_telemetry": true
+    },
+    "probes": {
+      "P1": {
+        "state": "connected",
+        "net": "LIGHT_SENSE",
+        "tip": "breadboard row T",
+        "adc": "S3 IO1 via 10k/10k divider",
+        "digital": "S3 IO2 direct input",
+        "note": "photoresistor node and C6 IO1 are connected"
+      },
+      "P2": {
+        "state": "connected",
+        "net": "MPU_VCC",
+        "expected_min_v": 3.0,
+        "expected_max_v": 3.3,
+        "tip": "breadboard row U",
+        "adc": "S3 IO4 via 10k/10k divider",
+        "digital": "S3 IO5 direct input",
+        "note": "user connected tip U to MPU VCC; P2 passed 3V3, GND, and sensor VCC checks"
+      },
+      "P3": {
+        "state": "connected",
+        "net": "WATER_SENSE",
+        "tip": "water sensor S row W",
+        "adc": "S3 IO6 through 10k series resistor, no divider",
+        "digital": "S3 IO7 through separate 10k series resistor",
+        "note": "user connected water sensor plus to C6 3V3, minus to shared GND, S to C6 IO2 and separate 10k series S3 IO6/IO7 branches; S3 measured 0.000 V dry and 0.833–0.897 V wet"
+      }
+    },
+    "digital_taps": {
+      "D1": {
+        "state": "connected",
+        "net": "MPU_SDA",
+        "endpoint": "MPU SDA row",
+        "gpio": 8,
+        "series_resistor_ohm": 10000
+      },
+      "D2": {
+        "state": "connected",
+        "net": "MPU_SCL",
+        "endpoint": "MPU SCL row",
+        "gpio": 9,
+        "series_resistor_ohm": 10000
+      },
+      "D3": {
+        "state": "connected",
+        "net": "MPU_SDA",
+        "endpoint": "C6 IO5 source junction",
+        "gpio": 10,
+        "series_resistor_ohm": 6800
+      },
+      "D4": {
+        "state": "connected",
+        "net": "MPU_SCL",
+        "endpoint": "C6 IO7 source junction",
+        "gpio": 11,
+        "series_resistor_ohm": 6800
+      },
+      "D5": {
+        "state": "connected",
+        "net": "ALARM_DRIVE",
+        "endpoint": "C6 IO20 before LED resistor",
+        "gpio": 12,
+        "series_resistor_ohm": 6800,
+        "max_transitions_per_s": 8
+      }
+    },
+    "bus_monitor": {
+      "state": "connected",
+      "sda_net": "MPU_SDA",
+      "scl_net": "MPU_SCL",
+      "sda_input": "S3 IO8 through 10k series resistor",
+      "scl_input": "S3 IO9 through 10k series resistor",
+      "note": "user wired S3 IO8/IO9 through separate 10k series resistors to MPU SDA/SCL; both counted transitions with DUT serial open"
+    },
+    "source": "user_declared",
+    "physically_verified": false
+  },
+  "harness_changed_during_capture": false,
+  "physical": {
+    "simultaneous": false,
+    "elapsed_ms": 26.8,
+    "wiring_source": "user_declared",
+    "readings": [
+      {
+        "timestamp": "2026-09-26T20:11:49.980809+00:00",
+        "declared_state": "connected",
+        "declared_net": "LIGHT_SENSE",
+        "kind": "voltage",
+        "probe": "P1",
+        "voltage_v": 2.436,
+        "raw": 1426,
+        "samples": 32
+      },
+      {
+        "timestamp": "2026-09-26T20:11:49.989794+00:00",
+        "declared_state": "connected",
+        "declared_net": "MPU_VCC",
+        "kind": "voltage",
+        "probe": "P2",
+        "voltage_v": 3.165,
+        "raw": 1864,
+        "samples": 32
+      },
+      {
+        "timestamp": "2026-09-26T20:11:50.007419+00:00",
+        "declared_state": "connected",
+        "declared_net": "WATER_SENSE",
+        "kind": "voltage",
+        "probe": "P3",
+        "voltage_v": 0.0,
+        "raw": 0,
+        "samples": 32
+      }
+    ],
+    "digital_states": {
+      "P1": "HIGH",
+      "P2": "HIGH",
+      "P3": "LOW"
+    },
+    "timestamp": "2026-09-26T20:11:50.010355+00:00",
+    "source": "s3_physical",
+    "voltage_limit_v": 3.3
+  },
+  "capture": {
+    "kind": "digital_taps",
+    "window_ms": 1000,
+    "edge_counts_approximate": true,
+    "capture_windows_overlap": true,
+    "decoded_transactions": false,
+    "taps": {
+      "D1": {
+        "start": "HIGH",
+        "end": "HIGH",
+        "edges": 42,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "MPU_SDA",
+        "endpoint": "MPU SDA row"
+      },
+      "D2": {
+        "start": "HIGH",
+        "end": "HIGH",
+        "edges": 166,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "MPU_SCL",
+        "endpoint": "MPU SCL row"
+      },
+      "D3": {
+        "start": "HIGH",
+        "end": "HIGH",
+        "edges": 42,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "MPU_SDA",
+        "endpoint": "C6 IO5 source junction"
+      },
+      "D4": {
+        "start": "HIGH",
+        "end": "HIGH",
+        "edges": 166,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "MPU_SCL",
+        "endpoint": "C6 IO7 source junction"
+      },
+      "D5": {
+        "start": "LOW",
+        "end": "LOW",
+        "edges": 0,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "ALARM_DRIVE",
+        "endpoint": "C6 IO20 before LED resistor"
+      }
+    },
+    "comparisons": [
+      {
+        "net": "MPU_SDA",
+        "taps": [
+          "D1",
+          "D3"
+        ],
+        "continuity_verified": false,
+        "assessment": "activity_at_both",
+        "detail": "Both endpoints showed transitions; counts do not prove delivery of the same data or continuity."
+      },
+      {
+        "net": "MPU_SCL",
+        "taps": [
+          "D2",
+          "D4"
+        ],
+        "continuity_verified": false,
+        "assessment": "activity_at_both",
+        "detail": "Both endpoints showed transitions; counts do not prove delivery of the same data or continuity."
+      }
+    ],
+    "expectations": [
+      {
+        "tap": "D5",
+        "net": "ALARM_DRIVE",
+        "max_transitions_per_s": 8,
+        "scope": "Upper bound on observed transitions only; does not prove the load works.",
+        "state": "pass",
+        "observed_transitions_per_s": 0.0,
+        "detail": "Observed approximately 0.00 transitions/s; declared upper bound 8/s. Check the signal and sense branch if exceeded."
+      }
+    ],
+    "wiring_source": "user_declared",
+    "continuity_verified": false,
+    "limitations": "Approximate interrupt counts with overlapping windows and small start/stop skew; no waveform, edge correlation, or protocol decode.",
+    "timestamp": "2026-09-26T20:13:48.849117+00:00",
+    "source": "s3_physical",
+    "dut_stream_open_during_capture": true
+  },
+  "errors": [],
+  "serial": {
+    "port": "/dev/cu.usbmodem5",
+    "continuous": false,
+    "events": [
+      {
+        "seq": 7,
+        "timestamp": "2026-09-26T20:11:51.671301+00:00",
+        "source": "serial_observed",
+        "port": "/dev/cu.usbmodem5",
+        "line": "SENTINEL build=plant-sentinel-v1 light_mv=2498 water_mv=16 imu_ok=1 ax_g=-0.011 ay_g=0.013 az_g=1.080 imu_id=0x70 low_light=0 water_detected=0 tilted=0 alert=0 fault=0"
+      }
+    ]
+  },
+  "source_context": {
+    "before": {
+      "source": "local_files",
+      "commit": "6cd44d002587a04fbe5c523f2ae1d02ae371994f",
+      "short_commit": "6cd44d00",
+      "dirty": true,
+      "modified_files": [
+        ".gitignore",
+        "benchos/client.py",
+        "benchos/dashboard.py",
+        "benchos/dashboard_ui/app.css",
+        "benchos/dashboard_ui/app.js",
+        "benchos/dashboard_ui/index.html",
+        "benchos/dashboard_ui/records.js",
+        "benchos/records.py",
+        "tests/test_dashboard.py"
+      ],
+      "declared_dut_firmware": "plant_sentinel",
+      "flashed_firmware_verified": false,
+      "files": [
+        {
+          "path": "harness/current.yaml",
+          "bytes": 2859,
+          "sha256_short": "321942590376"
+        },
+        {
+          "path": "lab_controller/lab_controller.ino",
+          "bytes": 8258,
+          "sha256_short": "2aa465ff6329"
+        },
+        {
+          "path": "lab_controller/config.h",
+          "bytes": 1547,
+          "sha256_short": "df501195dd4b"
+        },
+        {
+          "path": "benchos/client.py",
+          "bytes": 8957,
+          "sha256_short": "6593b341c272"
+        },
+        {
+          "path": "benchos/dashboard.py",
+          "bytes": 31324,
+          "sha256_short": "969fa4de394f"
+        },
+        {
+          "path": "benchos/dashboard_ui/app.js",
+          "bytes": 42445,
+          "sha256_short": "75f20c89d28c"
+        },
+        {
+          "path": "mcp_server/server.py",
+          "bytes": 6471,
+          "sha256_short": "ed4c50888df7"
+        },
+        {
+          "path": "dut_examples/plant_sentinel/plant_sentinel.ino",
+          "bytes": 3893,
+          "sha256_short": "93fa4fbec90b"
+        },
+        {
+          "path": "dut_examples/plant_sentinel/config.h",
+          "bytes": 923,
+          "sha256_short": "2607e0d85503"
+        }
+      ],
+      "recorded_at": "2026-09-26T20:11:47.902776+00:00"
+    },
+    "after": {
+      "source": "local_files",
+      "commit": "6cd44d002587a04fbe5c523f2ae1d02ae371994f",
+      "short_commit": "6cd44d00",
+      "dirty": true,
+      "modified_files": [
+        ".gitignore",
+        "benchos/client.py",
+        "benchos/dashboard.py",
+        "benchos/dashboard_ui/app.css",
+        "benchos/dashboard_ui/app.js",
+        "benchos/dashboard_ui/index.html",
+        "benchos/dashboard_ui/records.js",
+        "benchos/records.py",
+        "tests/test_dashboard.py"
+      ],
+      "declared_dut_firmware": "plant_sentinel",
+      "flashed_firmware_verified": false,
+      "files": [
+        {
+          "path": "harness/current.yaml",
+          "bytes": 2859,
+          "sha256_short": "321942590376"
+        },
+        {
+          "path": "lab_controller/lab_controller.ino",
+          "bytes": 8258,
+          "sha256_short": "2aa465ff6329"
+        },
+        {
+          "path": "lab_controller/config.h",
+          "bytes": 1547,
+          "sha256_short": "df501195dd4b"
+        },
+        {
+          "path": "benchos/client.py",
+          "bytes": 8957,
+          "sha256_short": "6593b341c272"
+        },
+        {
+          "path": "benchos/dashboard.py",
+          "bytes": 31324,
+          "sha256_short": "969fa4de394f"
+        },
+        {
+          "path": "benchos/dashboard_ui/app.js",
+          "bytes": 42445,
+          "sha256_short": "75f20c89d28c"
+        },
+        {
+          "path": "mcp_server/server.py",
+          "bytes": 6471,
+          "sha256_short": "ed4c50888df7"
+        },
+        {
+          "path": "dut_examples/plant_sentinel/plant_sentinel.ino",
+          "bytes": 3893,
+          "sha256_short": "93fa4fbec90b"
+        },
+        {
+          "path": "dut_examples/plant_sentinel/config.h",
+          "bytes": 923,
+          "sha256_short": "2607e0d85503"
+        }
+      ],
+      "recorded_at": "2026-09-26T20:13:49.660839+00:00"
+    },
+    "changed_during_capture": false,
+    "flashed_firmware_verified": false
+  }
+}

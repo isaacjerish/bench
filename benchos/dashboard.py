@@ -11,6 +11,7 @@ import subprocess
 import threading
 import time
 from collections import deque
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,7 +28,7 @@ from .harness import describe_harness, update_probe_declarations
 from .ports import available_ports, candidate_ports
 from .protocol import BenchError
 from .serial_lock import SerialPortLock
-from .records import list_records, read_record
+from .records import list_records, read_record, write_record
 
 MODES = {"light", "led", "servo", "imu"}
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -208,42 +209,57 @@ class DashboardState:
     def __init__(self, lab_port: str | None = None, dut_port: str | None = None):
         self.lab_port = lab_port
         self.dut_port = dut_port
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._capture_lock = threading.Lock()
+        self._capture_owner: int | None = None
         self._serial_events = deque(maxlen=400)
         self._serial_seq = 0
 
-    def _record_serial(self, line: str) -> None:
+    @contextmanager
+    def instrument_access(self):
+        if self._capture_owner not in (None, threading.get_ident()):
+            raise BenchError("A saved capture has reserved the instrument; retry shortly")
+        if not self._lock.acquire(timeout=3):
+            raise BenchError("Instrument is busy with another capture; retry shortly")
+        try:
+            if self._capture_owner not in (None, threading.get_ident()):
+                raise BenchError("A saved capture has reserved the instrument; retry shortly")
+            yield
+        finally:
+            self._lock.release()
+
+    def _record_serial(self, line: str, port: str = "") -> None:
         self._serial_seq += 1
         self._serial_events.append({"seq": self._serial_seq,
                                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                                    "source": "serial_observed", "line": line[:512]})
+                                    "source": "serial_observed", "port": port, "line": line[:512]})
 
     def serial_sample(self, port: str, duration_ms: int, after_seq: int = 0) -> dict:
         if port not in set(candidate_ports()):
             raise ValueError("Serial port is not currently available")
         if not 100 <= duration_ms <= 1200 or after_seq < 0:
             raise ValueError("Invalid serial sample window or sequence")
-        with self._lock:
+        with self.instrument_access():
             try:
                 with SerialPortLock(port), serial.Serial(port, 115200, timeout=0.1, write_timeout=0.25) as device:
                     deadline = time.monotonic() + duration_ms / 1000
                     while time.monotonic() < deadline:
                         line = device.readline().decode("utf-8", errors="replace").strip()
                         if line:
-                            self._record_serial(line)
+                            self._record_serial(line, port)
             except (serial.SerialException, OSError) as exc:
                 raise BenchError(f"Cannot sample serial port {port}: {exc}") from exc
             if after_seq > self._serial_seq:
                 after_seq = 0
             return {"port": port, "sample_window_ms": duration_ms,
                     "continuous": False, "latest_seq": self._serial_seq,
-                    "events": [item for item in self._serial_events if item["seq"] > after_seq]}
+                    "events": [item for item in self._serial_events if item["seq"] > after_seq and item["port"] == port]}
 
     def probe_sample(self, port: str, harness: dict | None = None) -> dict:
         if port not in set(candidate_ports()):
             raise ValueError("S3 port is not currently available")
         probes = (describe_harness() if harness is None else harness)["probes"]
-        with self._lock:
+        with self.instrument_access():
             with BenchClient(port) as client:
                 started = time.monotonic()
                 pair = client.measure_voltage_pair(probe_declarations=probes)
@@ -262,7 +278,8 @@ class DashboardState:
         pair["voltage_limit_v"] = 3.3
         return pair
 
-    def bus_sample(self, port: str, duration_ms: int, dut_port: str = "", *, digital_taps: bool = False) -> dict:
+    def bus_sample(self, port: str, duration_ms: int, dut_port: str = "", *, digital_taps: bool = False,
+                   harness: dict | None = None) -> dict:
         known = set(candidate_ports())
         if port not in known:
             raise ValueError("S3 port is not currently available")
@@ -282,12 +299,12 @@ class DashboardState:
                     while not stream_stop.is_set():
                         line = dut.readline().decode("utf-8", errors="replace").strip()
                         if line:
-                            self._record_serial(line)
+                            self._record_serial(line, dut_port)
             except (BenchError, serial.SerialException, OSError) as exc:
                 stream_error.append(str(exc))
                 stream_ready.set()
 
-        with self._lock:
+        with self.instrument_access():
             # Some DUT sketches pause their serial logging (and therefore their
             # I/O loop) when USB CDC has no reader. Keep the DUT stream drained
             # while the independent S3 samples the physical bus.
@@ -297,8 +314,13 @@ class DashboardState:
                 stream_ready.wait(1.5)
             try:
                 with BenchClient(port, timeout=4.0) as client:
-                    result = (client.measure_digital_taps(duration_ms) if digital_taps
-                              else client.measure_bus_activity(duration_ms))
+                    if harness is None:
+                        result = (client.measure_digital_taps(duration_ms) if digital_taps
+                                  else client.measure_bus_activity(duration_ms))
+                    elif digital_taps:
+                        result = client.measure_digital_taps(duration_ms, tap_declarations=harness.get("digital_taps", {}))
+                    else:
+                        result = client.measure_bus_activity(duration_ms, monitor_declaration=harness.get("bus_monitor", {}))
             finally:
                 stream_stop.set()
                 if reader:
@@ -307,6 +329,85 @@ class DashboardState:
                 "source": "s3_physical", "decoded_transactions": False,
                 "dut_stream_open_during_capture": bool(reader and stream_ready.is_set() and not stream_error),
                 **({"dut_stream_error": stream_error[0]} if stream_error else {})}
+
+    def capture_record(self, payload: dict) -> dict:
+        """Collect fresh server-side evidence; accept only labels and port choices."""
+        allowed = {"lab_port", "dut_port", "label", "note"}
+        if not isinstance(payload, dict) or set(payload) - allowed:
+            raise ValueError("Capture accepts port choices, label, and note only")
+        lab, dut = payload.get("lab_port", ""), payload.get("dut_port", "")
+        label, note = payload.get("label", ""), payload.get("note", "")
+        if (not isinstance(lab, str) or not isinstance(dut, str)
+                or not isinstance(label, str) or not 1 <= len(label.strip()) <= 100
+                or not isinstance(note, str) or len(note) > 2000):
+            raise ValueError("Choose the S3 and a label of 1–100 characters; notes allow 2000 characters")
+        known = set(candidate_ports())
+        if lab not in known or (dut and (dut not in known or dut == lab)):
+            raise ValueError("Choose currently available, distinct lab and DUT ports")
+        if not self._capture_lock.acquire(blocking=False):
+            raise BenchError("A capture is already in progress")
+        acquired = False
+        try:
+            self._capture_owner = threading.get_ident()
+            # Reserve this dashboard's instrument queue across the complete
+            # saved capture. Each window still acquires the cross-process USB
+            # lock separately; these measurements are not simultaneous.
+            acquired = self._lock.acquire(timeout=10)
+            if not acquired:
+                raise BenchError("Instrument is busy with another capture; retry shortly")
+            # Pin labels and scale declarations must stay fixed across both
+            # measurement windows, even if another browser edits the harness.
+            declared = describe_harness()
+            source_before = {**code_inventory(), "recorded_at": datetime.now(timezone.utc).isoformat()}
+            started = datetime.now(timezone.utc).isoformat()
+            physical = self.probe_sample(lab, harness=declared)
+            capture, errors = None, []
+            has_taps = any(tap.get("state") == "connected" for tap in declared.get("digital_taps", {}).values())
+            if has_taps or declared.get("bus_monitor", {}).get("state") == "connected":
+                try:
+                    capture = self.bus_sample(lab, 1000, dut, digital_taps=has_taps, harness=declared)
+                    if capture.get("dut_stream_error"):
+                        errors.append({"stage": "dut_serial", "message": capture["dut_stream_error"]})
+                except (ValueError, BenchError, OSError) as exc:
+                    errors.append({"stage": "digital_capture", "message": str(exc)})
+            elif dut:
+                try:
+                    self.serial_sample(dut, 700)
+                except (ValueError, BenchError, OSError) as exc:
+                    errors.append({"stage": "dut_serial", "message": str(exc)})
+            ended = datetime.now(timezone.utc).isoformat()
+            if capture:
+                gap = (datetime.fromisoformat(capture["timestamp"]) -
+                       datetime.fromisoformat(physical["timestamp"])).total_seconds()
+                if gap > 15:
+                    errors.append({"stage": "timing", "message":
+                        f"Digital window ended {gap:.1f} s after the voltage reading; do not treat these as concurrent observations"})
+            with self._lock:
+                events = [dict(event) for event in self._serial_events
+                          if event["port"] == dut and started <= event["timestamp"] <= ended]
+            source_after = {**code_inventory(), "recorded_at": datetime.now(timezone.utc).isoformat()}
+            try:
+                harness_changed = describe_harness() != declared
+            except (ValueError, OSError, yaml.YAMLError):
+                harness_changed = True
+            document = {
+                "schema_version": 1, "kind": "benchy_capture", "source": "dashboard_instrument_capture",
+                "label": label.strip(), "note": note, "timestamp": started,
+                "saved_at": datetime.now(timezone.utc).isoformat(), "capture_ended_at": ended,
+                "simultaneous": False, "lab_port": lab, "dut_port": dut,
+                "harness": declared, "harness_changed_during_capture": harness_changed,
+                "physical": physical, "capture": capture, "errors": errors,
+                "serial": {"port": dut, "continuous": False, "events": events},
+                "source_context": {"before": source_before, "after": source_after,
+                    "changed_during_capture": any(source_before.get(key) != source_after.get(key)
+                        for key in ("commit", "files", "dirty", "modified_files")),
+                    "flashed_firmware_verified": False}}
+            return write_record(document)
+        finally:
+            if acquired:
+                self._lock.release()
+            self._capture_owner = None
+            self._capture_lock.release()
 
     def close(self) -> None:
         pass
@@ -350,7 +451,7 @@ class DashboardState:
                     if mode == "light":
                         result["dut"] = {"reported_voltage_v": read_light_report(dut_port)}
                     else:
-                        result["dut"] = read_imu_report(dut_port, line_sink=self._record_serial)
+                        result["dut"] = read_imu_report(dut_port, line_sink=lambda line: self._record_serial(line, dut_port))
                 except (BenchError, OSError, ValueError) as exc:
                     result["errors"].append({"device": "C6", "message": str(exc)})
         result["diagnosis"] = diagnose(mode, result["physical"], result["dut"], result["errors"])
@@ -454,7 +555,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
-        if urlsplit(self.path).path != "/api/harness/probes":
+        route = urlsplit(self.path).path
+        if route not in {"/api/harness/probes", "/api/records"}:
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         origin = self.headers.get("Origin")
@@ -466,10 +568,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if not 1 <= length <= 2048:
+            if not 1 <= length <= (12_000 if route == "/api/records" else 2048):
                 raise ValueError("Invalid request size")
             payload = json.loads(self.rfile.read(length))
-            self._json(update_probe_declarations(payload))
+            if route == "/api/records":
+                self._json(self.server.state.capture_record(payload), HTTPStatus.CREATED)
+            else:
+                self._json(update_probe_declarations(payload))
+        except BenchError as exc:
+            self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
         except (OSError, ValueError, yaml.YAMLError) as exc:
             self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 

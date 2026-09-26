@@ -5,11 +5,36 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import tempfile
+import uuid
 from datetime import datetime
 from pathlib import Path
 
 RECORDS_ROOT = Path(__file__).resolve().parent.parent / "validation_runs"
 MAX_BYTES = 512_000
+
+
+def write_record(document: dict, root: Path = RECORDS_ROOT) -> dict:
+    """Persist a server-built capture atomically, under a generated filename."""
+    raw = json.dumps(document, ensure_ascii=False, allow_nan=False, indent=2).encode("utf-8")
+    if len(raw) > MAX_BYTES:
+        raise ValueError("Capture exceeds the storage limit")
+    folder = root / "dashboard"
+    folder.mkdir(parents=True, exist_ok=True)
+    if folder.is_symlink() or not folder.resolve().is_relative_to(root.resolve()):
+        raise ValueError("Capture directory must remain inside validation_runs")
+    name = "dashboard/" + uuid.uuid4().hex + ".json"
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=folder, prefix=".capture-", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(raw)
+        os.replace(temporary, root / name)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return read_record(name, root)
 
 
 def _timestamp(value) -> str | None:
@@ -52,6 +77,9 @@ def read_record(name: str, root: Path = RECORDS_ROOT) -> dict:
         capture = data["captures"][-1]
     capture = capture if isinstance(capture, dict) else {}
     observed_at = _timestamp(data.get("timestamp")) or _timestamp(capture.get("timestamp")) or _timestamp(physical.get("timestamp"))
+    ended_at = _timestamp(data.get("capture_ended_at"))
+    span_s = round((datetime.fromisoformat(ended_at.replace("Z", "+00:00")) -
+                    datetime.fromisoformat(observed_at.replace("Z", "+00:00"))).total_seconds(), 3) if ended_at and observed_at else None
     observations = []
 
     def add(channel, net, metric, value, unit, timestamp=None, detail=None):
@@ -100,11 +128,20 @@ def read_record(name: str, root: Path = RECORDS_ROOT) -> dict:
         lines = []
     if isinstance(data.get("serial"), dict) and isinstance(data["serial"].get("events"), list):
         lines = [event.get("line") for event in data["serial"]["events"][-30:] if isinstance(event, dict)]
-    return {"id": name, "title": path.stem.replace("-", " ").replace("_", " ").capitalize(),
+    label = data.get("label")
+    title = label[:100] if isinstance(label, str) and label.strip() else path.stem.replace("-", " ").replace("_", " ").capitalize()
+    return {"id": name, "title": title,
             "timestamp": observed_at, "source": "recorded_file", "is_live": False,
+            "capture_ended_at": ended_at, "capture_span_s": span_s,
             "sha256": hashlib.sha256(raw).hexdigest(), "observations": observations,
             "dut_lines": [line[:512] for line in lines[-30:] if isinstance(line, str)],
             "harness_snapshot_available": isinstance(data.get("harness"), dict),
+            "harness": data.get("harness") if isinstance(data.get("harness"), dict) else None,
+            "source_context": data.get("source_context") if isinstance(data.get("source_context"), dict) else None,
+            "note": data.get("note", "")[:2000] if isinstance(data.get("note", ""), str) else "",
+            "capture_errors": data.get("errors", []) if isinstance(data.get("errors", []), list) else [],
+            "saved_at": _timestamp(data.get("saved_at")),
+            "harness_changed_during_capture": data.get("harness_changed_during_capture"),
             "notes": ["Saved observations, not the present state of the circuit.",
                       "Net names come from the saved declaration; no physical connectivity is inferred.",
                       "Channels can have different capture windows. Missing values are not zero."]}

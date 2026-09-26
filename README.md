@@ -189,6 +189,18 @@ to approximate transitions per second. Legacy files without a full wiring
 snapshot are identified. Session timeline entries can also be opened to inspect
 their saved measurement, declaration, and nearby device output.
 
+Use **Save new capture** to take fresh physical readings and save a named
+record with a note, the original harness, bounded DUT output, and local source
+inventories before and after sampling. Measurement values come from the server's
+instrument calls. Voltage and digital windows are sequential; each reading's
+time is shown. Long gaps and partial digital/serial failures are recorded
+explicitly. Source hashes describe local files, not the flashed binary.
+The capture reserves the dashboard's instrument queue; competing polling
+requests return a busy response and can retry. Automatically saved files live
+in `validation_runs/dashboard/` and are Git-ignored. They survive browser and
+server restarts; intentionally selected validation evidence can be copied into
+the tracked `validation_runs/` directory for a handoff.
+
 The investigation panel shows evidence, uncertainty, a suggested next check,
 and a local timeline export. The read-only DUT serial monitor samples bounded
 windows with filtering, pause, clear, and export controls. There may be gaps

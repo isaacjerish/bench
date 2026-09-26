@@ -2,6 +2,31 @@
 
 ## Latest work: website while user is AFK (2026-09-26)
 
+- Follow-up: **Save new capture** now collects fresh server-side physical
+  readings, a frozen harness, nearby selected-DUT serial output, a user note,
+  and local source inventories before/after. It stores a persistent JSON file
+  and selects it in the comparison panel. Automatically saved runtime records
+  in `validation_runs/dashboard/` are ignored by Git.
+- One real browser save succeeded: P1 2.436 V, P2 3.165 V, P3 0 V;
+  D1/D3 42/42 transitions, D2/D4 166/166, D5 0 in a 1 s digital window.
+  **Those voltage and digital windows were ~119 seconds apart**, so they must
+  not be interpreted as concurrent observations. The raw record is retained in
+  `validation_runs/2026-09-26-dashboard-capture.json`. The UI now displays
+  per-reading timestamps and capture spans, and new long gaps get a warning.
+- Added bounded queue waits and a reservation so automatic polling cannot
+  overtake a saved capture. Also bound serial events to their originating port.
+  The subsequent live retry could not run: both ESP32s disappeared from USB
+  discovery. Only system/Bluetooth ports were listed. The queue reservation
+  is host-tested, but a successful live repeat with the final reservation fix
+  remains pending. Do not claim its timing is physically validated.
+- Website still works offline for source inspection and saved comparisons.
+  The save action is disabled until an S3 is identified. User is AFK; do not
+  restart the deferred wiring sequence.
+- Final capture-feature verification: **79 Python tests and 4 Node UI tests
+  passed**, including loopback HTTP routes, server-originated measurement
+  capture, frozen declarations, source changes, partial failures, queue
+  reservation, and timing warnings. Browser checked the saved context,
+  individual timestamps, and disabled save action while boards are absent.
 - User postponed the clean wiring rebuild and asked for website work. No
   firmware was changed or new wiring requested during this website pass.
 - Added declared DUT pin coverage (`dut_pins` in the harness), showing the
