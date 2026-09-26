@@ -2,6 +2,14 @@
 
 ## Active: ParcelGuard wiring checks pass (2026-09-26)
 
+User requested a concise document for friends introducing wiring faults on
+camera. `DEMO_BREAK_GUIDE.md` covers swapping the C6 IO1/IO2 sensor leads,
+opening the LED ground, and disconnecting only photoresistor 3V3, with exact
+restoration instructions. These fault procedures are **not yet rehearsed**;
+only the healthy circuit has been physically validated. The guide explicitly
+states that an LED-path break can leave electrical checks passing and requires
+the user's visual observation. Do not promise automatic exact-wire localization.
+
 User requested “check wiring” after the clean batch. Both enrolled USB boards
 were discovered and uploaded with verification. S3 now responds as v0.3,
 `series-taps-v1`; C6 emits `build=parcel-guard-v1`, fault 0. Port names swapped:

@@ -1,5 +1,8 @@
 # ParcelGuard demo: observe → diagnose → repair → verify
 
+For friends introducing physical wiring faults, use the short
+[what-to-break guide](DEMO_BREAK_GUIDE.md).
+
 Status: matching firmware is uploaded. Initial light readings agree and the
 LED drive passes at 2.000 Hz. Covered/dry reads 0.686 V light and alarm off;
 the user confirms visible on/off response. Dark/wet measures 0.534 V light,
