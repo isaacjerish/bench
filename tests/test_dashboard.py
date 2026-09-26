@@ -176,6 +176,22 @@ def test_dashboard_serves_assets_and_snapshot_without_hardware(monkeypatch):
             assert b"Benchy" in response.read()
         with urlopen(base + "/app.js") as response:
             assert b"const names = ['P1', 'P2', 'P3']" in response.read()
+        with urlopen(base + "/workspace-model.js") as response:
+            assert b"compareObservations" in response.read()
+        with urlopen(base + "/records.js") as response:
+            assert b"/api/records" in response.read()
+        with urlopen(base + "/api/records") as response:
+            records = json.load(response)
+            assert records["is_live"] is False
+            assert records["records"]
+            record_id = records["records"][0]["id"]
+        with urlopen(base + "/api/records?id=" + quote(record_id)) as response:
+            record = json.load(response)
+            assert record["id"] == record_id
+            assert record["is_live"] is False
+        with pytest.raises(HTTPError) as blocked:
+            urlopen(base + "/api/records?id=../.env")
+        assert blocked.value.code == 400
         with urlopen(base + "/api/harness") as response:
             declaration = json.load(response)
             assert declaration["source"] == "user_declared"

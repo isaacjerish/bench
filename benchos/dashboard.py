@@ -27,6 +27,7 @@ from .harness import describe_harness, update_probe_declarations
 from .ports import available_ports, candidate_ports
 from .protocol import BenchError
 from .serial_lock import SerialPortLock
+from .records import list_records, read_record
 
 MODES = {"light", "led", "servo", "imu"}
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +39,8 @@ IMU_LINE = re.compile(r"IMU_ACCEL_G x=(-?\d+\.\d+) y=(-?\d+\.\d+) z=(-?\d+\.\d+)
 WHO_LINE = re.compile(r"IMU_FOUND addr=0x([0-9A-Fa-f]{2}) who_am_i=0x([0-9A-Fa-f]{2})\Z")
 ASSETS = {"/": ("index.html", "text/html; charset=utf-8"),
           "/app.css": ("app.css", "text/css; charset=utf-8"),
+          "/workspace-model.js": ("workspace-model.js", "text/javascript; charset=utf-8"),
+          "/records.js": ("records.js", "text/javascript; charset=utf-8"),
           "/app.js": ("app.js", "text/javascript; charset=utf-8")}
 
 
@@ -407,6 +410,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except (BenchError, OSError) as exc:
                 self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
             return
+        if route.path == "/api/records":
+            query = parse_qs(route.query)
+            try:
+                name = query.get("id", [""])[0]
+                self._json(read_record(name) if name else list_records())
+            except (OSError, ValueError, TypeError, RecursionError) as exc:
+                self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
         if route.path == "/api/harness":
             try:
                 self._json(describe_harness())
@@ -464,12 +475,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def _json(self, value: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
         data = json.dumps(value).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            # A reload can close an in-flight polling request. There is no
+            # client left to receive a second error response.
+            return
 
 
 class DashboardServer(ThreadingHTTPServer):

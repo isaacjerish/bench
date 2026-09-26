@@ -1,5 +1,31 @@
 # Benchy handoff
 
+## Latest work: website while user is AFK (2026-09-26)
+
+- User postponed the clean wiring rebuild and asked for website work. No
+  firmware was changed or new wiring requested during this website pass.
+- Added declared DUT pin coverage (`dut_pins` in the harness), showing the
+  connected analog/digital channels and their latest fresh evidence. The
+  existing circuit declares five used pins, all covered. This is a declaration,
+  not automatic discovery or continuity verification.
+- Added rolling two-minute voltage trends. Old physical readings lose their
+  current verdict after 15 seconds; the page labels stale captures explicitly.
+  Pausing live sampling was checked in the browser: the assessment changed to
+  “Fresh evidence needed” and the coverage table stopped showing old readings.
+- Added read-only saved-capture comparison, backed by bounded JSON files in
+  `validation_runs/`. Original net labels are retained; missing measurements
+  stay blank. Deltas require the same channel, net, metric, and unit. Browser
+  check: the saved noisy D5 capture showed 4,988.006 transitions/s, versus 0
+  after reseating. This is historical evidence, not a new physical test.
+- Session timeline entries open an inspectable snapshot with the original
+  measurement, harness declaration, nearby serial output, and recent taps.
+  Escape closes the viewer. Legacy records without wiring snapshots say so.
+- Host verification: **71 Python tests passed**, including loopback API and
+  asset serving; **4 Node UI logic tests passed**. JS syntax and whitespace
+  checks passed. Dashboard running at `http://127.0.0.1:8765/`; check process
+  before restarting. Live sampling was restored after the browser check.
+- Untracked `video/node_modules/` belongs to separate video work; do not stage it.
+
 ## Active direction: clean ParcelGuard rebuild
 
 User requested a clean, simpler test project for a quick friends demo, with
@@ -12,10 +38,12 @@ Each signal branches through a 6.8 kΩ resistor into a sense row shared by an
 S3 ADC and a digital input: P1 IO1/IO8, P2 IO4/IO9, P3 IO6/IO10. These are
 known 0–3.3 V nodes with no ADC divider. Existing firmware/manifest still
 describe the prior circuit. **Do not measure the rebuilt circuit under the
-old mapping or scale.** Await “ParcelGuard wired”; meanwhile prepare a named
-S3 series-tap profile (ADC scale 1), C6 `parcel_guard` sketch, and its harness
-with all new connections pending until confirmed. Keep the old profile and
-historical evidence. No Git history reset/rebase is requested.
+old mapping or scale.** The full inline wiring batch has not yet been delivered
+and the user has not confirmed rebuilding it. When they return to wiring,
+prepare a named S3 series-tap profile (ADC scale 1), C6 `parcel_guard` sketch,
+and its harness, then deliver the complete batch. Keep all new connections
+pending until confirmed. Preserve the old profile and historical evidence.
+No Git history reset/rebase is requested.
 
 ## Latest checkpoint: permanent taps (2026-09-26, 19:35 UTC)
 
@@ -46,7 +74,8 @@ historical evidence. No Git history reset/rebase is requested.
   unplug both boards, check LED polarity (long leg/anode toward the
   220–330 Ω resistor, short leg/flat side to shared GND), ensure legs occupy
   separate connected groups and correct resistor value, then reconnect with
-  light still covered and report whether it flashes. Await that reply.
+  light still covered and report whether it flashes. That request was later
+  superseded by the clean rebuild; do not resume the old one-wire sequence.
 - A separate D5 frequency window without explicitly holding DUT serial open
   read 1 Hz (two rising edges in 2 s), so consistent standalone 2 Hz timing
   is not yet proved. The covered-light record contains both results. Keep

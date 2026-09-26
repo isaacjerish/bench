@@ -174,6 +174,21 @@ transaction decode, and zero edges alone do not establish a bus fault. The
 **Preview** switch uses clearly marked sample readings without hardware;
 preview values are never reported as live measurements.
 
+The **Declared pin coverage** table maps optional `dut_pins` entries in the
+harness to connected probes on the same named net. It shows what is declared
+observable, not which pins firmware actually uses. Probe cards include rolling
+two-minute voltage trends with gaps between interrupted samples. Physical
+readings older than 15 seconds are marked stale and cannot sustain a current
+passing assessment.
+
+**Saved captures** compares records from `validation_runs/` without feeding
+historical values into the live view. It preserves original net labels, leaves
+missing readings blank, and only calculates differences between matching
+channels, nets, metrics, and units. Counts from different windows are normalized
+to approximate transitions per second. Legacy files without a full wiring
+snapshot are identified. Session timeline entries can also be opened to inspect
+their saved measurement, declaration, and nearby device output.
+
 The investigation panel shows evidence, uncertainty, a suggested next check,
 and a local timeline export. The read-only DUT serial monitor samples bounded
 windows with filtering, pause, clear, and export controls. There may be gaps

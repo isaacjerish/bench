@@ -18,6 +18,12 @@ dut:
 source_files:
   - dut_examples/plant_sentinel/plant_sentinel.ino
   - dut_examples/plant_sentinel/config.h
+dut_pins:
+  IO1: {net: LIGHT_SENSE, function: Analog input}
+  IO2: {net: WATER_SENSE, function: Analog input}
+  IO5: {net: MPU_SDA, function: I²C data}
+  IO7: {net: MPU_SCL, function: I²C clock}
+  IO20: {net: ALARM_DRIVE, function: LED output}
 telemetry_checks:
   - {probe: P1, field: light_mv, scale_to_v: 0.001, max_delta_v: 0.45}
   - {probe: P3, field: water_mv, scale_to_v: 0.001, max_delta_v: 0.45}

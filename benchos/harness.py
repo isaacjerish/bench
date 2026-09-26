@@ -20,6 +20,17 @@ def describe_harness(path: Path = HARNESS_FILE) -> dict:
     if not isinstance(data, dict) or data.get("version") != 1:
         raise ValueError("Unsupported harness declaration")
     probes = data.get("probes")
+    pins = data.get("dut_pins", {})
+    if not isinstance(pins, dict) or len(pins) > 64:
+        raise ValueError("dut_pins must declare at most 64 pins")
+    for pin, declaration in pins.items():
+        if (not isinstance(pin, str) or not re.fullmatch(r"[A-Za-z0-9_]{1,16}", pin)
+                or not isinstance(declaration, dict)
+                or not isinstance(declaration.get("net"), str)
+                or not NET_RE.fullmatch(declaration["net"])
+                or not isinstance(declaration.get("function"), str)
+                or not 1 <= len(declaration["function"]) <= 64):
+            raise ValueError("Each DUT pin needs a label, net, and function")
     if not isinstance(probes, dict) or set(probes) != {"P1", "P2", "P3"}:
         raise ValueError("Harness must declare P1, P2, and P3")
     for name, probe in probes.items():

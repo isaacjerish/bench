@@ -1,5 +1,7 @@
 const el = (id) => document.getElementById(id);
 const names = ['P1', 'P2', 'P3'];
+const model = window.BenchyModel;
+let probeHistory = {};
 let harness = null, latestSample = null, latestBus = null, latestTaps = null, inventory = null;
 let preview = false, auto = true, probeBusy = false, busBusy = false, serialBusy = false, serialPaused = false;
 let serialSeq = 0, serialEvents = [], session = [];
@@ -21,11 +23,13 @@ function saveSession() {
 }
 function resetProbeDisplay() {
   latestSample = null;
+  probeHistory = {};
   for (const name of names) {
     const key = name.toLowerCase();
     setText('probe-' + key + '-value', '—');
     setText('probe-' + key + '-level', '—');
     el('probe-' + key + '-fill').style.width = '0%';
+    renderSpark(name);
   }
   setText('probe-status', 'No paired sample yet.');
   el('export-probes').disabled = true;
@@ -34,6 +38,58 @@ function resetProbeDisplay() {
 function compactNet(value) {
   if (!value) return 'UNDECLARED';
   return value.length > 15 ? value.slice(0, 13) + '…' : value;
+}
+function renderSpark(name) {
+  const key = name.toLowerCase(), now = Date.now();
+  const points = (probeHistory[name] || []).filter(point => point.time >= now - 120000);
+  probeHistory[name] = points;
+  let previous = null;
+  const path = points.map(point => {
+    const x = Math.min(296, Math.max(4, 4 + (point.time - (now - 120000)) / 120000 * 292));
+    const y = 54 - Math.min(3.3, Math.max(0, point.value)) / 3.3 * 48;
+    const command = !previous || point.time - previous.time > 12000 ? 'M' : 'L';
+    previous = point; return command + x.toFixed(1) + ' ' + y.toFixed(1);
+  }).join(' ');
+  el('spark-' + key).setAttribute('d', path);
+  setText('spark-' + key + '-meta', points.length ?
+    Math.min(...points.map(point => point.value)).toFixed(2) + '–' + Math.max(...points.map(point => point.value)).toFixed(2) + ' V · ' + points.length + ' samples' : 'Awaiting samples');
+}
+function renderCoverage() {
+  const rows = model.coverage(harness), target = el('coverage-rows'); target.replaceChildren();
+  const connected = rows.filter(row => row.covered).length;
+  setText('coverage-summary', rows.length ? connected + ' / ' + rows.length : '—');
+  setText('coverage-description', rows.length ? 'declared DUT pins have connected probes' : 'Declare used DUT pins in the harness to see coverage');
+  for (const row of rows) {
+    const element = document.createElement('tr');
+    let evidence = 'Awaiting fresh sample';
+    const analog = latestSample && model.isFresh(latestSample.timestamp) && latestSample.readings.find(item => item.declared_net === row.net && item.declared_state === 'connected');
+    const digital = latestTaps && model.isFresh(latestTaps.timestamp) && Object.entries(latestTaps.taps).filter(([, item]) => item.declared_net === row.net && item.usable_for_diagnosis);
+    if (analog) evidence = (preview ? 'PREVIEW · ' : '') + analog.voltage_v.toFixed(3) + ' V · ' + analog.probe;
+    else if (digital && digital.length) evidence = digital.map(([name, item]) => name + ' ' + (item.edges * 1000 / latestTaps.window_ms).toFixed(1) + '/s').join(' · ');
+    if (!row.covered) evidence = 'No declared connected probe';
+    const values = [row.pin, row.net, row.function,
+      row.channels.map(channel => channel.name + (channel.state !== 'connected' ? ' (' + channel.state.replaceAll('_', ' ') + ')' : '')).join(' · ') || 'Unobserved', evidence];
+    for (const value of values) { const cell = document.createElement('td'); cell.textContent = value; element.append(cell); }
+    target.append(element);
+  }
+}
+function renderFreshness() {
+  const stale = latestSample && !preview && !model.isFresh(latestSample.timestamp);
+  for (const name of names) {
+    el('probe-' + name.toLowerCase() + '-value').closest('.probe-card').dataset.stale = String(Boolean(stale));
+    renderSpark(name);
+  }
+  if (latestSample && !probeBusy) setText('probe-status', preview ? 'PREVIEW · sample data' :
+    (stale ? 'STALE · last recorded ' : 'S3 physical · ') + Math.max(0, Math.floor(model.ageMs(latestSample.timestamp) / 1000)) + ' s ago · reads are sequential');
+  el('digital-taps').dataset.stale = String(Boolean(latestTaps && !model.isFresh(latestTaps.timestamp)));
+  el('bus').dataset.stale = String(Boolean(latestBus && !preview && !model.isFresh(latestBus.timestamp)));
+  if (latestBus && !busBusy) setText('bus-status', preview ? 'PREVIEW · sample data' :
+    (model.isFresh(latestBus.timestamp) ? 'S3 PHYSICAL' : 'STALE · LAST CAPTURE') + ' · ' +
+    Math.max(0, Math.floor(model.ageMs(latestBus.timestamp) / 1000)) + ' s ago · approximate edge counts');
+  if (latestTaps && !busBusy) setText('digital-tap-status', (model.isFresh(latestTaps.timestamp) ? 'S3 PHYSICAL' : 'STALE · LAST CAPTURE') +
+    ' · ' + Math.max(0, Math.floor(model.ageMs(latestTaps.timestamp) / 1000)) + ' s ago · ' + latestTaps.window_ms + ' ms window · approximate counts');
+  setText('session-badge', preview ? 'PREVIEW DATA' : !el('lab-port').value && !el('dut-port').value ? 'OFFLINE' : auto ? 'LIVE SESSION' : 'SAMPLING PAUSED');
+  renderAssessment(); renderTelemetry(); renderCoverage();
 }
 function renderHarness() {
   if (!harness) return;
@@ -59,6 +115,7 @@ function renderHarness() {
   setText('bus-scl-net', monitor.scl_net || 'UNDECLARED');
   if (monitor.state !== 'connected') setText('bus-status', 'Sense inputs ' + (monitor.state || 'undeclared') + ' · user declaration');
   renderTaps(null);
+  renderCoverage();
   renderAssessment();
 }
 async function loadHarness() {
@@ -66,6 +123,7 @@ async function loadHarness() {
     const response = await fetch('/api/harness', {cache:'no-store'});
     const data = await response.json();
     if (!response.ok) throw Error(data.error || 'Harness unavailable');
+    if (harness && JSON.stringify(harness) !== JSON.stringify(data)) { resetProbeDisplay(); renderBus(null); }
     harness = data; renderHarness();
   } catch (error) { setText('harness-state', 'Harness unavailable: ' + error.message); }
 }
@@ -86,6 +144,7 @@ async function loadPorts() {
     const count = ['lab', 'dut'].filter(kind => el(kind + '-port').value).length;
     setText('connection-label', count === 2 ? 'S3 + DUT identified' : count === 1 ? 'One board identified' : 'Boards unavailable');
     el('connection-dot').classList.toggle('active', count === 2);
+    renderAssessment();
   } catch (error) { setText('connection-label', 'Port discovery unavailable'); }
 }
 function previewSample() {
@@ -102,6 +161,10 @@ function previewSample() {
 }
 function evaluate(sample) {
   if (!sample) return {state:'unknown', label:'AWAITING EVIDENCE', title:'Ready when you are.', detail:'Select the S3 port and take a paired probe reading.', next:'Take a paired reading on known safe nodes.'};
+  if (!preview && (!el('lab-port').value || !model.isFresh(sample.timestamp))) return {
+    state:'unknown', label:'LAST SAMPLE · NOT CURRENT', title:'Fresh evidence needed.',
+    detail:'The last physical reading was captured at ' + timeLabel(sample.timestamp) + '. Values remain visible as history; they do not establish the circuit’s current state.',
+    next:'Reconnect the identified S3 or resume sampling to obtain a fresh observation.'};
   const disconnected = sample.readings.filter(row => row.declared_state !== 'connected');
   const checks = sample.readings.map(row => {
     const declared = harness && harness.probes ? harness.probes[row.probe] : null;
@@ -132,8 +195,8 @@ function evaluate(sample) {
   if (disagreement) return {state:'fail', label:'DUT REPORT DISAGREES', title:disagreement.rule.field + ' differs from ' + disagreement.rule.probe + '.',
     detail:'DUT serial claims ' + disagreement.claimed.toFixed(3) + ' V; S3 measured ' + disagreement.physical.toFixed(3) + ' V at the declared net. Difference ' + disagreement.delta.toFixed(3) + ' V exceeds ' + Number(disagreement.rule.max_delta_v).toFixed(3) + ' V.',
     next:'Check ADC scaling, selected pin, and report logic. Repeat with a controlled change at the sensor.'};
-  const busIsFresh = latestBus && !preview && Math.abs(Date.parse(latestBus.timestamp) - Date.parse(sample.timestamp)) < 15000;
-  const tapsAreFresh = latestTaps && !preview && Math.abs(Date.parse(latestTaps.timestamp) - Date.parse(sample.timestamp)) < 15000;
+  const busIsFresh = latestBus && !preview && model.isFresh(latestBus.timestamp) && Math.abs(Date.parse(latestBus.timestamp) - Date.parse(sample.timestamp)) < 15000;
+  const tapsAreFresh = latestTaps && !preview && model.isFresh(latestTaps.timestamp) && Math.abs(Date.parse(latestTaps.timestamp) - Date.parse(sample.timestamp)) < 15000;
   const tapTargetMissed = tapsAreFresh && (latestTaps.expectations || []).find(item => item.state === 'fail');
   if (tapTargetMissed) return {state:'fail', label:'DIGITAL TARGET MISSED', title:tapTargetMissed.net + ' has unexpected activity.',
     detail:tapTargetMissed.detail, next:'Check the declared signal node and the sense branch, then capture again. This observation alone does not identify a faulty component.'};
@@ -193,14 +256,19 @@ function storeReading(sample, manual) {
   if (preview) return;
   const now = Date.now(), last = session.at(-1), verdict = evaluate(sample);
   if (!manual && last && last.state === verdict.state && now - last.time < 30000) return;
-  session.push({time:now, state:verdict.state, title:verdict.title, manual, sample});
+  session.push({time:now, state:verdict.state, title:verdict.title, manual, sample,
+    harness:structuredClone(harness),
+    taps:latestTaps && model.isFresh(latestTaps.timestamp) ? latestTaps : null,
+    serial:serialEvents.filter(event => Math.abs(Date.parse(event.timestamp) - Date.parse(sample.timestamp)) <= 10000)});
   session = session.slice(-100); saveSession(); renderTimeline();
 }
 function renderTimeline() {
   const target = el('timeline'); target.replaceChildren();
   if (!session.length) { const p = document.createElement('p'); p.className = 'empty-state'; p.textContent = 'Measurements will appear here as they arrive.'; target.append(p); return; }
   for (const item of [...session].reverse().slice(0, 25)) {
-    const row = document.createElement('div'); row.className = 'timeline-row'; row.dataset.state = item.state;
+    const row = document.createElement('button'); row.type = 'button'; row.className = 'timeline-row'; row.dataset.state = item.state;
+    row.setAttribute('aria-label', 'Inspect saved capture at ' + timeLabel(item.time));
+    row.addEventListener('click', () => window.BenchyRecords.inspectSnapshot(item));
     const time = document.createElement('time'); time.textContent = timeLabel(item.time);
     const title = document.createElement('strong'); title.textContent = (item.manual ? 'CAPTURE · ' : '') + item.title;
     const probes = document.createElement('span'); probes.className = 'timeline-probe'; probes.textContent = item.sample.readings.map(row => row.probe).join(' + ');
@@ -215,11 +283,18 @@ function renderProbeSample(sample) {
     setText('probe-' + key + '-value', value.toFixed(3));
     setText('probe-' + key + '-level', sample.digital_states && sample.digital_states[row.probe] || '—');
     el('probe-' + key + '-fill').style.width = Math.min(100, Math.max(0, value / 3.3 * 100)) + '%';
+    if (row.declared_state === 'connected' && Number.isFinite(value)) {
+      const points = probeHistory[row.probe] || [];
+      points.push({time:Date.parse(row.timestamp || sample.timestamp), value});
+      probeHistory[row.probe] = points.filter(point => point.time >= Date.now() - 120000).slice(-40);
+      renderSpark(row.probe);
+    }
   }
   setText('probe-status', (preview ? 'PREVIEW · sample data' : 'S3 physical · ordered reads') + ' · ' + timeLabel(sample.timestamp));
   el('export-probes').disabled = false;
   setText('footer-status', (preview ? 'Preview sample' : 'Physical sample') + ' at ' + timeLabel(sample.timestamp));
   renderAssessment(); storeReading(sample, false);
+  renderCoverage();
 }
 async function sampleProbes() {
   if (probeBusy) return;
@@ -231,7 +306,7 @@ async function sampleProbes() {
     const response = await fetch('/api/probes?' + new URLSearchParams({lab_port:port}), {cache:'no-store'});
     const data = await response.json();
     if (!response.ok) throw Error(data.error || 'Probe sample failed');
-    if (port === el('lab-port').value) renderProbeSample(data);
+    if (port === el('lab-port').value && !preview) renderProbeSample(data);
   } catch (error) { setText('probe-status', 'Probe unavailable: ' + error.message); }
   finally { probeBusy = false; el('sample-probes').disabled = false; }
 }
@@ -303,6 +378,7 @@ function renderTaps(sample) {
     ? 'S3 PHYSICAL · ' + sample.window_ms + ' ms · ' + timeLabel(sample.timestamp) + ' · counts are approximate'
     : 'Awaiting capture. Pending connections are excluded from diagnosis.');
   el('export-taps').disabled = !sample;
+  renderCoverage();
 }
 async function sampleBus() {
   if (busBusy) return;
@@ -487,4 +563,5 @@ loadHarness().then(() => Promise.all([loadPorts(), loadCode()])).then(() => {
   setInterval(() => { if (auto) sampleBus(); }, 9000);
   setInterval(pollSerial, 2400);
   setInterval(loadPorts, 15000);
+  setInterval(renderFreshness, 1000);
 });
