@@ -2,6 +2,8 @@
 
 import json
 import threading
+from urllib.error import HTTPError
+from urllib.parse import quote
 from urllib.request import urlopen
 
 import pytest
@@ -100,6 +102,20 @@ def test_dashboard_serves_assets_and_snapshot_without_hardware():
             declaration = json.load(response)
             assert declaration["source"] == "user_declared"
             assert declaration["probes"]["P2"]["net"] == "MPU_VCC"
+        with urlopen(base + "/api/code") as response:
+            inventory = json.load(response)
+            assert inventory["source"] == "local_files"
+            assert inventory["flashed_firmware_verified"] is False
+            assert any(item["path"] == "dut_examples/imu_demo/imu_demo.ino" for item in inventory["files"])
+        with urlopen(base + "/api/source?path=" + quote("dut_examples/imu_demo/imu_demo.ino")) as response:
+            source = json.load(response)
+            assert "IMU_ACCEL_G" in source["text"]
+        with pytest.raises(HTTPError) as blocked:
+            urlopen(base + "/api/source?path=../.env")
+        assert blocked.value.code == 400
+        with pytest.raises(HTTPError) as blocked:
+            urlopen(base + "/api/serial?port=/dev/not-a-device")
+        assert blocked.value.code == 400
         with urlopen(base + "/api/snapshot?mode=light") as response:
             data = json.load(response)
             assert data["diagnosis"]["state"] == "unknown"

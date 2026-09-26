@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
+import subprocess
 import threading
+import time
+from collections import deque
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import serial
@@ -24,6 +29,14 @@ from .protocol import BenchError
 from .serial_lock import SerialPortLock
 
 MODES = {"light", "led", "servo", "imu"}
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SOURCE_FILES = (
+    "lab_controller/lab_controller.ino", "lab_controller/config.h",
+    "dut_examples/imu_demo/imu_demo.ino", "dut_examples/imu_demo/config.h",
+    "dut_examples/light_sensor_demo/light_sensor_demo.ino",
+    "dut_examples/led_demo/led_demo.ino", "dut_examples/servo_demo/servo_demo.ino",
+    "harness/current.yaml", "physical_tests/imu_vcc.yaml",
+)
 IMU_LINE = re.compile(r"IMU_ACCEL_G x=(-?\d+\.\d+) y=(-?\d+\.\d+) z=(-?\d+\.\d+)(?: id=0x([0-9A-Fa-f]{2}))?\Z")
 WHO_LINE = re.compile(r"IMU_FOUND addr=0x([0-9A-Fa-f]{2}) who_am_i=0x([0-9A-Fa-f]{2})\Z")
 ASSETS = {"/": ("index.html", "text/html; charset=utf-8"),
@@ -31,6 +44,46 @@ ASSETS = {"/": ("index.html", "text/html; charset=utf-8"),
           "/app.js": ("app.js", "text/javascript; charset=utf-8"),
           **{f"/scene-{mode}.png": (f"scene-{mode}.png", "image/png")
              for mode in MODES}}
+
+
+def code_inventory() -> dict:
+    """Describe local source, without claiming it matches flashed firmware."""
+    try:
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT,
+                                capture_output=True, text=True, timeout=2, check=True).stdout.strip()
+        status = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
+                                cwd=REPO_ROOT, capture_output=True, text=True, timeout=2,
+                                check=True).stdout.splitlines()
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        commit, status = None, []
+    entries = []
+    for name in SOURCE_FILES:
+        path = REPO_ROOT / name
+        if path.is_file():
+            data = path.read_bytes()
+            entries.append({"path": name, "bytes": len(data),
+                            "sha256_short": hashlib.sha256(data).hexdigest()[:12]})
+    try:
+        harness = describe_harness()
+        declared_firmware = harness.get("dut", {}).get("firmware")
+    except (OSError, ValueError, yaml.YAMLError):
+        declared_firmware = None
+    return {"source": "local_files", "commit": commit, "short_commit": commit[:8] if commit else None,
+            "dirty": bool(status) if commit else None,
+            "modified_files": [line[3:] for line in status],
+            "declared_dut_firmware": declared_firmware,
+            "flashed_firmware_verified": False, "files": entries}
+
+
+def source_file(name: str) -> dict:
+    if name not in SOURCE_FILES:
+        raise ValueError("File is not in the source viewer allowlist")
+    path = REPO_ROOT / name
+    data = path.read_bytes()
+    if len(data) > 150_000:
+        raise ValueError("Source file is too large for the viewer")
+    return {"path": name, "source": "local_file", "text": data.decode("utf-8", errors="replace"),
+            "sha256_short": hashlib.sha256(data).hexdigest()[:12]}
 
 
 def diagnose(mode: str, physical: dict | None, dut: dict | None,
@@ -97,7 +150,7 @@ def diagnose(mode: str, physical: dict | None, dut: dict | None,
     raise ValueError(f"Unknown mode: {mode}")
 
 
-def read_imu_report(port: str, timeout_s: float = 2.5) -> dict:
+def read_imu_report(port: str, timeout_s: float = 2.5, line_sink=None) -> dict:
     """Read one C6 motion line; a fresh session may miss the one-time ID line."""
     import time
 
@@ -107,6 +160,8 @@ def read_imu_report(port: str, timeout_s: float = 2.5) -> dict:
             deadline = time.monotonic() + timeout_s
             while time.monotonic() < deadline:
                 line = dut.readline().decode("ascii", errors="replace").strip()
+                if line and line_sink:
+                    line_sink(line)
                 if line.startswith("IMU_ERROR "):
                     raise BenchError(f"C6 reported {line}")
                 identity = WHO_LINE.fullmatch(line)
@@ -135,6 +190,35 @@ class DashboardState:
         self.lab_port = lab_port
         self.dut_port = dut_port
         self._lock = threading.Lock()
+        self._serial_events = deque(maxlen=400)
+        self._serial_seq = 0
+
+    def _record_serial(self, line: str) -> None:
+        self._serial_seq += 1
+        self._serial_events.append({"seq": self._serial_seq,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "source": "serial_observed", "line": line[:512]})
+
+    def serial_sample(self, port: str, duration_ms: int, after_seq: int = 0) -> dict:
+        if port not in set(candidate_ports()):
+            raise ValueError("Serial port is not currently available")
+        if not 100 <= duration_ms <= 1200 or after_seq < 0:
+            raise ValueError("Invalid serial sample window or sequence")
+        with self._lock:
+            try:
+                with SerialPortLock(port), serial.Serial(port, 115200, timeout=0.1, write_timeout=0.25) as device:
+                    deadline = time.monotonic() + duration_ms / 1000
+                    while time.monotonic() < deadline:
+                        line = device.readline().decode("utf-8", errors="replace").strip()
+                        if line:
+                            self._record_serial(line)
+            except (serial.SerialException, OSError) as exc:
+                raise BenchError(f"Cannot sample serial port {port}: {exc}") from exc
+            if after_seq > self._serial_seq:
+                after_seq = 0
+            return {"port": port, "sample_window_ms": duration_ms,
+                    "continuous": False, "latest_seq": self._serial_seq,
+                    "events": [item for item in self._serial_events if item["seq"] > after_seq]}
 
     def close(self) -> None:
         pass
@@ -178,7 +262,7 @@ class DashboardState:
                     if mode == "light":
                         result["dut"] = {"reported_voltage_v": read_light_report(dut_port)}
                     else:
-                        result["dut"] = read_imu_report(dut_port)
+                        result["dut"] = read_imu_report(dut_port, line_sink=self._record_serial)
                 except (BenchError, OSError, ValueError) as exc:
                     result["errors"].append({"device": "C6", "message": str(exc)})
         result["diagnosis"] = diagnose(mode, result["physical"], result["dut"], result["errors"])
@@ -194,6 +278,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         route = urlsplit(self.path)
+        if route.path == "/api/code":
+            self._json(code_inventory())
+            return
+        if route.path == "/api/source":
+            name = parse_qs(route.query).get("path", [""])[0]
+            try:
+                self._json(source_file(name))
+            except ValueError as exc:
+                self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            except OSError as exc:
+                self._json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
+            return
+        if route.path == "/api/serial":
+            query = parse_qs(route.query)
+            try:
+                port = query.get("port", [""])[0]
+                duration_ms = int(query.get("duration_ms", ["700"])[0])
+                after_seq = int(query.get("after", ["0"])[0])
+                self._json(self.server.state.serial_sample(port, duration_ms, after_seq))
+            except (ValueError, BenchError) as exc:
+                self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
         if route.path == "/api/harness":
             try:
                 self._json(describe_harness())

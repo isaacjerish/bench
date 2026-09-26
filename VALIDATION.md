@@ -49,6 +49,9 @@ not mocked values.
 | SCL restored | P2 `imu_vcc` PASS at 3.246 V/HIGH; C6 returned `WHO_AM_I=0x70` and 1.096 g magnitude |
 | Current host suite after P2, harness, and IMU link diagnostics | 28 passed with local loopback access |
 | Live dashboard after SCL restoration and software restart | P2 measured 3.225 V; C6 reported 1.087 g, no clipped axes; state `unverified` because bus traffic is not independently decoded |
+| Dashboard serial monitor API with connected C6 | Captured eight real `IMU_RAW` and `IMU_ACCEL_G` lines in a 1200 ms bounded window; this is sampled output, not continuous capture |
+| Dashboard after serial monitor added | P2 measured 3.225 V; C6 reported 1.088 g with no clipped axes; existing IMU verdict preserved |
+| Host tests with serial and code APIs | 31 passed, including source-file allowlist and invalid-port rejection |
 
 The resistor divider is nominally 1:2. These values show a working physical
 measurement loop, but the ADC and resistor tolerances do not make it a

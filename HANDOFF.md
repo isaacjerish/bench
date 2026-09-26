@@ -16,7 +16,8 @@ real hardware results. The key directories are:
 - `dut_examples/imu_demo/`: currently flashed MPU-family I²C motion demo.
 - `harness/current.yaml`: user-declared live wiring map; update after any wire move.
 - `benchos/dashboard.py` and `benchos/dashboard_ui/`: local dashboard and live
-  measurement view with four overhead breadboard scenes; start with
+  measurement view with four overhead breadboard scenes, serial monitor,
+  investigation timeline, and code inspector; start with
   `./scripts/python.sh -m benchos.dashboard`. The scenes are illustrative;
   read the exact wiring text shown below each image.
 - `physical_tests/`: YAML pass/fail checks.
@@ -99,6 +100,17 @@ real hardware results. The key directories are:
   reported a plausible 1.096 g acceleration magnitude. The C6 firmware now
   retries discovery after a sensor read failure; retry behavior was compiled
   and flashed, while the observed recovery included a USB reconnect.
+- The dashboard's `/api/serial` endpoint captured real C6 `IMU_RAW` and
+  `IMU_ACCEL_G` lines in bounded windows without disturbing the live IMU
+  snapshot. `/api/code` reports the local Git revision, modified files, hashes,
+  and declared DUT firmware; it explicitly does not verify the flashed binary.
+  The GUI can render in Preview without boards. Session notes are stored in the
+  browser's local storage and can be exported as JSON.
+- A read-only two-line bus-activity monitor is implemented in the S3 source
+  for IO8/IO9 and exposed by CLI/MCP, but it has **not** been flashed, wired,
+  or physically validated. `harness/current.yaml` keeps it `pending`, and the
+  host refuses to run it until the wiring declaration is updated. Do not cite
+  it as a current Benchy capability.
 
 ## What Benchy can diagnose today
 

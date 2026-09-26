@@ -147,6 +147,13 @@ and MPU demos. These generated scenes are **illustrative**; the exact wiring
 listed below each image and in the demo READMEs is authoritative. The
 **Preview** switch uses clearly marked sample readings to show the interface
 without hardware; preview values are never reported as live measurements.
+An investigation panel lists measured evidence, remaining uncertainty, next
+checks, and a local timeline that can be exported as JSON. The read-only C6
+serial monitor samples bounded windows, with filtering, pause, clear, and
+export controls. There may be gaps while another measurement uses the port.
+The code inspector shows an allowlisted set of local source files, file hashes,
+the Git revision, and local modifications. It labels the declared DUT firmware
+separately because the source on disk does not prove which binary was flashed.
 Subtle motion is disabled when the browser requests reduced motion. The server
 listens on the Mac's loopback interface only and exposes no firmware-flashing
 endpoint.
@@ -161,8 +168,8 @@ if either board was unplugged):
 Open [http://127.0.0.1:8765](http://127.0.0.1:8765). You can also select the
 ports in the page. The dashboard releases the S3 serial port after each
 sample; BenchOS uses a short cross-process lock to share its serial ports with
-the Codex MCP server and CLI. The dashboard measures only the circuit
-currently wired to P1; switching the page's circuit tab does not rewire the
+the Codex MCP server and CLI. The dashboard reads P1 for the light/LED/servo
+views and P2 for the declared MPU VCC connection. Switching the page's circuit tab does not rewire the
 hardware or change the C6 firmware.
 
 The visual direction draws on the [shadcn/ui dashboard examples](https://ui.shadcn.com/examples/dashboard),
