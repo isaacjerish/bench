@@ -12,6 +12,7 @@ from benchos.checks import run_suite
 from benchos.dashboard import read_imu_report
 from benchos.harness import describe_harness as read_harness
 from benchos.flash import plan_dut_flash as read_flash_plan, build_dut_firmware
+from benchos.telemetry import check_live_declared_telemetry
 from benchos.protocol import BenchError
 
 mcp = MCPServer("benchos", instructions=(
@@ -47,7 +48,7 @@ def lab_info() -> dict[str, Any]:
 
 @mcp.tool(structured_output=True)
 def describe_harness() -> dict[str, Any]:
-    """Return declared P1/P2 wiring and voltage limits; declarations are not proof."""
+    """Return declared P1/P2/P3 wiring and voltage limits; declarations are not proof."""
     try:
         return {"ok": True, **read_harness()}
     except (OSError, ValueError, yaml.YAMLError) as exc:
@@ -88,6 +89,20 @@ def measure_voltage(probe: str) -> dict[str, Any]:
 def measure_voltage_pair() -> dict[str, Any]:
     """Read P1 then P2 over one S3 connection; timestamps show they are not simultaneous."""
     return _measure("measure_voltage_pair")
+
+
+@mcp.tool(structured_output=True)
+def check_telemetry_against_probes() -> dict[str, Any]:
+    """Compare declared numeric DUT serial fields with fresh physical S3 probes.
+
+    Discovers the enrolled boards by USB identity; checks only declared fields
+    and nodes, and reports missing/stale serial data as unverified.
+    """
+    try:
+        result = check_live_declared_telemetry()
+        return {"ok": result["state"] == "pass", **result}
+    except (BenchError, OSError, ValueError, KeyError, yaml.YAMLError) as exc:
+        return {"ok": False, "state": "error", "error": str(exc)}
 
 
 @mcp.tool(structured_output=True)

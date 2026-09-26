@@ -160,7 +160,9 @@ windows with filtering, pause, clear, and export controls. There may be gaps
 while another tool uses the port. Its live-fields area parses the most recent
 serial `key=value` line without assuming a specific DUT sketch. Optional
 `telemetry_checks` in the harness compare numeric serial fields with fresh S3
-probe voltages using a declared unit scale and tolerance. The code inspector shows the S3 and host source,
+probe voltages using a declared unit scale and tolerance. The same check is
+available to agents through MCP `check_telemetry_against_probes` and CLI
+`check-telemetry`. The code inspector shows the S3 and host source,
 harness, and source files listed under `source_files` in the current harness,
 along with hashes, the Git revision, and local modifications. The declared DUT
 firmware is a label; source on disk does not prove which binary was flashed.

@@ -83,6 +83,14 @@ real hardware results. The key directories are:
   each with a 0.45 V tolerance. The live page showed “Independent readings
   agree” for the dry baseline. This checks reported analog values against S3
   readings near in time; it does not verify unprobed LED current or decode I²C.
+- Agents can call MCP `check_telemetry_against_probes` or run CLI
+  `check-telemetry`. Both discover enrolled S3/C6 USB identities, sample
+  overlapping windows, and compare only harness-declared fields and tips.
+  A live dry check passed: P1 2.443 V versus C6 2.489 V, P3 0.000 V versus
+  C6 0.019 V. Missing or stale reports return `unverified`.
+- The full host suite now passes 42 tests with loopback access, including
+  asset serving, MCP registration, false-zero detection, and stale-report
+  handling.
 - A second reversible SCL-open test before the combined sketch showed MPU
   VCC at 3.191 V, SDA 36 edges and SCL 0 edges in a 2 s S3 capture while
   C6 serial reported `IMU_ERROR no_device_at_0x68_or_0x69`. After restoring
@@ -253,6 +261,7 @@ Run in the repository directory:
 ./scripts/python.sh -m benchos.cli --port /dev/cu.usbmodem1101 pair-voltage
 ./scripts/python.sh -m benchos.cli --port /dev/cu.usbmodem1101 test physical_tests/imu_vcc.yaml
 ./scripts/python.sh -m benchos.cli --port /dev/cu.usbmodem1101 bus-activity --duration-ms 1000
+./scripts/python.sh -m benchos.cli check-telemetry
 ./scripts/python.sh -m benchos.cli flash-plan
 ./scripts/python.sh -m pytest -q
 ```

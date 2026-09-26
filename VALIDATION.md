@@ -73,6 +73,7 @@ not mocked values.
 | Water-sensor dry/wet response | P3 measured 0.000 V dry, then 0.897 V and 0.833 V in separate samples with only the sensor comb wet; this supports a 0.5 V provisional wet threshold. |
 | Combined DUT firmware | `plant_sentinel` compiled and uploaded to enrolled C6 serial `A0:85:E3:DA:BD:80`; verified flash hashes on the successful second attempt. Fresh serial showed build ID `plant-sentinel-v1`, light about 2.52 V, water 0.016–0.033 V dry, IMU ID `0x70`, no active alert. The first upload attempt lost the serial connection before verification. |
 | Combined dry baseline cross-check | S3 independently measured P1 2.464 V, P2 3.226 V and P3 0.003 V while C6 reported light ~2.52 V and water ~0.02 V. The dashboard reported agreement under harness-declared 0.45 V tolerances. LED output and wet C6 report remain to be checked. |
+| Agent-facing generic telemetry check | Enrolled USB identities were rediscovered. S3 P1 2.443 V vs C6 2.489 V and S3 P3 0.000 V vs C6 0.019 V both passed declared 0.45 V tolerances. A stale-report unit check returns `unverified`; a false-zero wet claim is unit-tested as `fail`. |
 
 The resistor divider is nominally 1:2. These values show a working physical
 measurement loop, but the ADC and resistor tolerances do not make it a

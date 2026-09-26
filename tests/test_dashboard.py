@@ -150,7 +150,7 @@ def test_dashboard_serves_assets_and_snapshot_without_hardware(monkeypatch):
         with urlopen(base + "/") as response:
             assert b"Benchy" in response.read()
         with urlopen(base + "/app.js") as response:
-            assert b"const names = ['P1', 'P2']" in response.read()
+            assert b"const names = ['P1', 'P2', 'P3']" in response.read()
         with urlopen(base + "/api/harness") as response:
             declaration = json.load(response)
             assert declaration["source"] == "user_declared"
@@ -159,11 +159,11 @@ def test_dashboard_serves_assets_and_snapshot_without_hardware(monkeypatch):
             inventory = json.load(response)
             assert inventory["source"] == "local_files"
             assert inventory["flashed_firmware_verified"] is False
-            assert any(item["path"] == "dut_examples/imu_demo/imu_demo.ino" for item in inventory["files"])
+            assert any(item["path"] == "dut_examples/plant_sentinel/plant_sentinel.ino" for item in inventory["files"])
             assert not any(item["path"] == "dut_examples/led_demo/led_demo.ino" for item in inventory["files"])
-        with urlopen(base + "/api/source?path=" + quote("dut_examples/imu_demo/imu_demo.ino")) as response:
+        with urlopen(base + "/api/source?path=" + quote("dut_examples/plant_sentinel/plant_sentinel.ino")) as response:
             source = json.load(response)
-            assert "IMU_ACCEL_G" in source["text"]
+            assert "SENTINEL build=" in source["text"]
         with pytest.raises(HTTPError) as blocked:
             urlopen(base + "/api/source?path=../.env")
         assert blocked.value.code == 400
