@@ -18,9 +18,11 @@
         const select = $('record-' + side), old = select.value;
         select.replaceChildren(new Option('Choose a capture…', ''));
         for (const record of data.records) select.add(new Option(record.title + ' · ' + date(record.timestamp), record.id));
-        if ([...select.options].some(option => option.value === old)) select.value = old;
+        const kept = data.records.find(record => record.id === old || (record.aliases || []).includes(old));
+        if (kept) select.value = kept.id;
       }
       $('records-status').textContent = data.records.length + ' saved capture' + (data.records.length === 1 ? '' : 's') + ' · recorded evidence, never live';
+      return data.records;
     } catch (error) { $('records-status').textContent = error.message; }
   }
 
@@ -110,8 +112,9 @@
 
   window.BenchyRecords = {
     async selectSaved(id) {
-      await loadInventory();
-      $('record-after').value = id;
+      const records = await loadInventory();
+      const selected = (records || []).find(record => record.id === id || (record.aliases || []).includes(id));
+      $('record-after').value = selected ? selected.id : id;
       await compare();
     },
     inspectSnapshot(item) {
@@ -124,6 +127,6 @@
   $('capture-dialog-close').addEventListener('click', () => $('capture-dialog').close());
   $('record-before').addEventListener('change', compare);
   $('record-after').addEventListener('change', compare);
-  $('refresh-records').addEventListener('click', loadInventory);
+  $('refresh-records').addEventListener('click', async () => { await loadInventory(); await compare(); });
   loadInventory();
 })();

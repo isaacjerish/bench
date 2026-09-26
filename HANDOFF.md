@@ -1,5 +1,37 @@
 # Benchy handoff
 
+## Latest: dashboard readiness pass (2026-09-26)
+
+- Completed conditional output checks in `benchos/activity.py`, enabled through
+  generic `activity_checks` declarations. For the current circuit, `alert=1`
+  requires 3–5 transitions/s at D3; `alert=0` requires zero. A silent requested
+  alarm and excessive activity fail. Missing serial reports, changed states,
+  delayed captures, or unconfirmed taps remain unverified.
+- Digital samples collect complete serial lines before and after a 2 s
+  counter window. Rules and evidence are included in the response/capture.
+  Reports are still DUT claims; output checks do not prove LED light emission.
+- Dashboard shows these bounded verdicts and requires them before giving a
+  passing assessment. Analog comparisons use the closest nearby report and
+  report changing inputs as inconclusive rather than a misleading mismatch.
+- Automatic browser sampling now sequences serial/probe/tap requests to reduce
+  contention. Port changes clear old DUT context; in-flight tap results from
+  a different selected DUT are discarded. Tap condition reports appear in
+  the serial monitor without waiting for another poll.
+- Identical saved files share one menu entry while all files/IDs remain
+  readable. Selection aliases preserve existing saved references. The current
+  library now shows 9 unique captures instead of 12 duplicate entries.
+- Signal navigation targets the permanent taps when no I²C bus is declared.
+  Preview/offline labels and save availability update correctly.
+- Verification: **103 Python tests + 9 Node UI tests passed**, including local
+  HTTP routes, malformed/stale/changed conditions, serial-fragment assembly,
+  missing required output checks, and record deduplication. Browser checked
+  source config, saved comparisons, serial filtering in labeled Preview, and
+  correct Offline state; restored real-data mode afterward.
+- Both ESP32s disappeared from USB discovery before this website pass. The
+  new conditional capture path is host-tested, **not yet revalidated live**.
+  Healthy physical light/water/LED evidence below remains historical. Firmware
+  was not changed during this pass. Dashboard restarted on localhost:8765.
+
 ## Active: ParcelGuard wiring checks pass (2026-09-26)
 
 User requested a concise document for friends introducing wiring faults on
@@ -47,9 +79,8 @@ Current connections are declared connected, not automatically traced/proven.
   note; raw measurements and timestamps remain unchanged.
 - Dashboard restarted and live browser refreshed with the new declarations.
   Host verification: 15 targeted profile/capture/postflash tests passed.
-- Uncommitted conditional-activity comparison work predates this wiring check;
-  it is not enabled in the harness yet. Finish and test before presenting it
-  as an operational diagnosis feature.
+- Conditional-activity comparison was completed in the later website pass
+  above. It is enabled and host-tested; a new live run is still required.
 
 ## Previous preparation: ParcelGuard wiring batch issued (2026-09-26)
 

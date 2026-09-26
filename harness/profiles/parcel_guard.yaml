@@ -22,6 +22,9 @@ dut_pins:
 telemetry_checks:
   - {probe: P1, field: light_mv, scale_to_v: 0.001, max_delta_v: 0.45}
   - {probe: P2, field: water_mv, scale_to_v: 0.001, max_delta_v: 0.45}
+activity_checks:
+- {tap: D3, field: alert, equals: 1, min_transitions_per_s: 3, max_transitions_per_s: 5}
+- {tap: D3, field: alert, equals: 0, min_transitions_per_s: 0, max_transitions_per_s: 0}
 postflash:
   serial_marker: build=parcel-guard-v1
   timeout_s: 8

@@ -39,3 +39,15 @@ def test_invalid_files_do_not_break_inventory(tmp_path):
     result = list_records(tmp_path)
     assert result["records"] == []
     assert result["skipped"] == 2
+
+
+def test_identical_copies_share_one_choice_but_both_remain_readable(tmp_path):
+    contents = json.dumps({'physical': {'readings': [{'probe': 'P1', 'voltage_v': 1.2}]}})
+    (tmp_path / 'saved.json').write_text(contents)
+    (tmp_path / 'dashboard').mkdir()
+    (tmp_path / 'dashboard' / 'original.json').write_text(contents)
+    result = list_records(tmp_path)
+    assert len(result['records']) == 1
+    entry = result['records'][0]
+    assert set([entry['id'], *entry['aliases']]) == {'saved.json', 'dashboard/original.json'}
+    assert read_record('saved.json', tmp_path)['observations'] == read_record('dashboard/original.json', tmp_path)['observations']

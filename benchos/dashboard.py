@@ -33,6 +33,7 @@ from .ports import available_ports, candidate_ports
 from .protocol import BenchError
 from .serial_lock import SerialPortLock
 from .records import list_records, read_record, write_record
+from .activity import compare_activity
 
 MODES = {"light", "led", "servo", "imu"}
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -394,6 +395,8 @@ class DashboardState:
         if isinstance(duration_ms, bool) or not 100 <= duration_ms <= 2000:
             raise ValueError("Bus sample window must be 100–2000 ms")
         stream_error = []
+        declared = describe_harness() if harness is None else harness
+        activity_rules = declared.get("activity_checks", []) if digital_taps else []
         stream_ready = threading.Event()
         stream_stop = threading.Event()
 
@@ -401,16 +404,24 @@ class DashboardState:
             try:
                 with SerialPortLock(dut_port), serial.Serial(dut_port, 115200, timeout=0.1,
                                                             write_timeout=0.25) as dut:
+                    dut.reset_input_buffer()
                     stream_ready.set()
+                    pending = bytearray()
                     while not stream_stop.is_set():
-                        line = dut.readline().decode("utf-8", errors="replace").strip()
-                        if line:
-                            self._record_serial(line, dut_port)
+                        pending.extend(dut.read_until(b"\n", 512))
+                        while b"\n" in pending:
+                            line, _, pending = pending.partition(b"\n")
+                            line = line.decode("utf-8", errors="replace").strip()
+                            if line:
+                                self._record_serial(line, dut_port)
+                        if len(pending) > 4096:
+                            raise BenchError("DUT serial line exceeded the capture limit")
             except (BenchError, serial.SerialException, OSError) as exc:
                 stream_error.append(str(exc))
                 stream_ready.set()
 
         with self.instrument_access():
+            first_seq = self._serial_seq
             # Some DUT sketches pause their serial logging (and therefore their
             # I/O loop) when USB CDC has no reader. Keep the DUT stream drained
             # while the independent S3 samples the physical bus.
@@ -420,21 +431,33 @@ class DashboardState:
                 stream_ready.wait(1.5)
             try:
                 with BenchClient(port, timeout=4.0) as client:
-                    if harness is None:
-                        result = (client.measure_digital_taps(duration_ms) if digital_taps
-                                  else client.measure_bus_activity(duration_ms))
-                    elif digital_taps:
-                        result = client.measure_digital_taps(duration_ms, tap_declarations=harness.get("digital_taps", {}))
+                    command_started = datetime.now(timezone.utc).isoformat()
+                    if digital_taps:
+                        result = client.measure_digital_taps(duration_ms, tap_declarations=declared.get("digital_taps", {}))
                     else:
-                        result = client.measure_bus_activity(duration_ms, monitor_declaration=harness.get("bus_monitor", {}))
+                        result = client.measure_bus_activity(duration_ms, monitor_declaration=declared.get("bus_monitor", {}))
+                    command_ended = datetime.now(timezone.utc).isoformat()
+                if reader and activity_rules:
+                    # Preserve a report after the counter window as well as
+                    # those observed while the lab connection was opening.
+                    stream_stop.wait(0.65)
             finally:
                 stream_stop.set()
                 if reader:
                     reader.join(timeout=1.0)
-        return {**result, "timestamp": datetime.now(timezone.utc).isoformat(),
+                    if reader.is_alive():
+                        stream_error.append("DUT serial reader did not stop within its deadline")
+            events = [dict(event) for event in self._serial_events
+                      if event["port"] == dut_port and event["seq"] > first_seq]
+        observed = {**result, "timestamp": command_ended,
+                "command_started_at": command_started, "command_ended_at": command_ended,
                 "source": "s3_physical", "decoded_transactions": False,
                 "dut_stream_open_during_capture": bool(reader and stream_ready.is_set() and not stream_error),
                 **({"dut_stream_error": stream_error[0]} if stream_error else {})}
+        if activity_rules:
+            observed["activity_checks"] = compare_activity(observed, events, activity_rules)
+            observed["condition_serial_events"] = events
+        return observed
 
     def capture_record(self, payload: dict) -> dict:
         """Collect fresh server-side evidence; accept only labels and port choices."""
@@ -471,7 +494,8 @@ class DashboardState:
             has_taps = any(tap.get("state") == "connected" for tap in declared.get("digital_taps", {}).values())
             if has_taps or declared.get("bus_monitor", {}).get("state") == "connected":
                 try:
-                    capture = self.bus_sample(lab, 1000, dut, digital_taps=has_taps, harness=declared)
+                    window_ms = 2000 if declared.get("activity_checks") else 1000
+                    capture = self.bus_sample(lab, window_ms, dut, digital_taps=has_taps, harness=declared)
                     if capture.get("dut_stream_error"):
                         errors.append({"stage": "dut_serial", "message": capture["dut_stream_error"]})
                 except (ValueError, BenchError, OSError) as exc:

@@ -8,6 +8,7 @@ import re
 import tempfile
 
 import yaml
+from .activity import validate_activity_rules
 
 
 HARNESS_FILE = Path(__file__).resolve().parent.parent / "harness" / "current.yaml"
@@ -72,6 +73,7 @@ def describe_harness(path: Path = HARNESS_FILE) -> dict:
         if maximum is not None and (isinstance(maximum, bool) or not isinstance(maximum, (int, float))
                                     or not math.isfinite(maximum) or not 0 <= maximum <= 10000000):
             raise ValueError(f"{name} transition upper bound must be a finite nonnegative number")
+    validate_activity_rules(data.get("activity_checks", []), taps)
     if not isinstance(telemetry_checks, list) or len(telemetry_checks) > 8:
         raise ValueError("telemetry_checks must be a list of at most eight rules")
     for rule in telemetry_checks:

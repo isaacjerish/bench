@@ -245,6 +245,15 @@ Named demo checks remain available through the CLI and MCP tools. Edit
 `harness/current.yaml` after changing the design's DUT metadata or source
 files; use the page's connection editor for P1/P2/P3 declarations.
 
+Optional `activity_checks` in the harness compare physical tap activity with
+numeric DUT states. Each rule declares `tap`, `field`, `equals`,
+`min_transitions_per_s`, and `max_transitions_per_s`. These count both rising
+and falling transitions (a 2 Hz square wave gives about 4 transitions/s).
+The dashboard requires stable serial reports bracketing the counter window;
+missing/changing conditions are unverified. Analog comparisons also flag
+changing inputs instead of treating different moments as a definite mismatch.
+Neither check verifies light emission, current, or unprobed connections.
+
 ### Grok voice debugging
 
 The Investigation panel includes a microphone button for live speech-to-speech

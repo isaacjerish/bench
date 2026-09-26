@@ -31,3 +31,45 @@ test('coverage counts only declared pins and confirmed probe assignments', () =>
     probes:{P1:{state:'connected', net:'A'}}, digital_taps:{D1:{state:'pending', net:'B'}}});
   assert.deepEqual(rows.map(row => row.covered), [true, false]);
 });
+
+const voltageRule = {probe:'P1', field:'light_mv', scale_to_v:0.001, max_delta_v:0.45};
+const sampleTime = '2026-09-26T20:00:05Z';
+const voltageSample = {timestamp:sampleTime, readings:[{probe:'P1', voltage_v:2.7, declared_state:'connected'}]};
+test('stable incorrect sensor reports still produce a mismatch', () => {
+  const result = model.compareTelemetry(voltageSample, [{timestamp:sampleTime, line:'light_mv=0'}], [voltageRule]);
+  assert.equal(result.comparisons[0].delta, 2.7);
+});
+test('moving sensor input does not become a false report disagreement', () => {
+  const result = model.compareTelemetry(voltageSample, [
+    {timestamp:'2026-09-26T20:00:04Z', line:'light_mv=2700'},
+    {timestamp:'2026-09-26T20:00:06Z', line:'light_mv=500'}], [voltageRule]);
+  assert.deepEqual(result.changing, ['light_mv']);
+  assert.equal(result.comparisons.length, 0);
+});
+test('missing and malformed serial evidence cannot fall back to a passing value', () => {
+  const good = {timestamp:sampleTime, line:'light_mv=2700'};
+  for (const line of ['light_mv=nan', 'light_mv=0xA8C']) {
+    const result = model.compareTelemetry(voltageSample, [good, {timestamp:sampleTime, line}], [voltageRule]);
+    assert.deepEqual(result.missing, ['light_mv']);
+  }
+  const stale = model.compareTelemetry(voltageSample, [{timestamp:'2026-09-26T19:00:00Z', line:'light_mv=2700'}], [voltageRule]);
+  assert.deepEqual(stale.missing, ['light_mv']);
+});
+const outputRules = [{tap:'D3', field:'alert', equals:1, min_transitions_per_s:3, max_transitions_per_s:5}];
+test('output verdict requires every current rule and a fresh capture', () => {
+  const harness = {activity_checks:outputRules}, now = Date.parse(sampleTime);
+  const capture = {timestamp:sampleTime, activity_checks:{rules:outputRules,
+    checks:[{tap:'D3', field:'alert', state:'pass', detail:'Matched'}]}};
+  assert.equal(model.activityVerdict(harness, capture, now).state, 'pass');
+  assert.equal(model.activityVerdict(harness, capture, now + 16000).state, 'unverified');
+  assert.equal(model.activityVerdict(harness, null, now).state, 'unverified');
+  capture.activity_checks.checks = [];
+  assert.equal(model.activityVerdict(harness, capture, now).state, 'unverified');
+});
+test('silent requested output is a failure and changed rules invalidate the verdict', () => {
+  const capture = {timestamp:sampleTime, activity_checks:{rules:outputRules,
+    checks:[{tap:'D3', field:'alert', state:'fail', detail:'Requested alert but zero edges'}]}};
+  const now = Date.parse(sampleTime);
+  assert.equal(model.activityVerdict({activity_checks:outputRules}, capture, now).state, 'fail');
+  assert.equal(model.activityVerdict({activity_checks:[{...outputRules[0], equals:0}]}, capture, now).state, 'unverified');
+});

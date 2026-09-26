@@ -125,7 +125,7 @@ def test_bus_sample_reports_raw_activity_without_claiming_decode(monkeypatch):
         def __exit__(self, *_args):
             pass
 
-        def measure_bus_activity(self, duration_ms):
+        def measure_bus_activity(self, duration_ms, **_kwargs):
             return {"window_ms": duration_ms, "sda": {"edges": 12}, "scl": {"edges": 48},
                     "edge_counts_approximate": True}
 
@@ -148,7 +148,7 @@ def test_dashboard_selects_five_input_capture_without_dut(monkeypatch):
         def __exit__(self, *_args):
             pass
 
-        def measure_digital_taps(self, duration_ms):
+        def measure_digital_taps(self, duration_ms, **_kwargs):
             return {"kind": "digital_taps", "window_ms": duration_ms,
                     "taps": {"D5": {"edges": 4}}, "comparisons": []}
 

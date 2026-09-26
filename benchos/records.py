@@ -150,7 +150,7 @@ def read_record(name: str, root: Path = RECORDS_ROOT) -> dict:
 def list_records(root: Path = RECORDS_ROOT) -> dict:
     entries, skipped = [], 0
     if root.is_dir():
-        for index, path in enumerate(root.rglob("*.json")):
+        for index, path in enumerate(sorted(root.rglob("*.json"))):
             if index >= 300:
                 break
             name = str(path.relative_to(root))
@@ -162,5 +162,13 @@ def list_records(root: Path = RECORDS_ROOT) -> dict:
                                | {"observation_count": len(record["observations"])})
             except (OSError, ValueError, TypeError, RecursionError):
                 skipped += 1
+    # Checked-in copies and their original runtime captures have identical
+    # bytes. Keep one menu choice while retaining every file and readable ID.
+    unique = {}
+    for entry in entries:
+        if entry['sha256'] in unique:
+            unique[entry['sha256']]['aliases'].append(entry['id'])
+        else:
+            unique[entry['sha256']] = {**entry, 'aliases': []}
     return {"source": "recorded_files", "is_live": False, "skipped": skipped,
-            "records": sorted(entries, key=lambda item: item["timestamp"] or "", reverse=True)[:100]}
+            "records": sorted(unique.values(), key=lambda item: item["timestamp"] or "", reverse=True)[:100]}
