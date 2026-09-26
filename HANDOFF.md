@@ -3,9 +3,12 @@
 ## Active: ParcelGuard wiring batch issued (2026-09-26)
 
 User is back and requested the final quick demo. The complete clean wiring
-batch was delivered in chat and is in `PARCEL_GUARD_SETUP.md`: light L/LS,
-water W/WS, and alarm A/AS each have a shared 6.8 kΩ ADC/digital tap.
-Await **“ParcelGuard wired.”** No need to request availability of more parts.
+batch was delivered in chat and is in `PARCEL_GUARD_SETUP.md`: the photoresistor,
+water sensor, and LED output each have a shared 6.8 kΩ ADC/digital tap.
+Await **“wired” / “ParcelGuard wired.”** No need to request more parts.
+User explicitly requests component-by-component instructions in wiring order:
+use board names and pin labels, never invented row letters or node names.
+The setup guide follows power → photoresistor → water sensor → LED → USB.
 
 - Current harness now selects `parcel_guard` with P1/P2/P3 and D1/D2/D3
   **pending**. Prior map is preserved in
