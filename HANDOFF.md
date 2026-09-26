@@ -1,5 +1,40 @@
 # Benchy handoff
 
+## Latest checkpoint: permanent taps (2026-09-26)
+
+- The user is adding three **6.8 kΩ** branches: C6 IO5 source junction to
+  S3 IO10, C6 IO7 source junction to S3 IO11, and C6 IO20 before the existing
+  LED resistor to S3 IO12. Preserve all earlier probes and sensor wiring.
+  `PERMANENT_TAPS.md` contains the full batch; D3/D4/D5 remain `pending`
+  until the user confirms completion. Existing D1/D2 remain on MPU-side rows.
+- S3 v0.2 compiled successfully (315,258 bytes program; 23,336 bytes globals)
+  with input-only IO8–IO12 capture. **This build has not yet been uploaded or
+  physically validated.** The compiled output is in the original workspace's
+  `work/s3-digital-taps`; recompile if source changes before upload.
+- Host parser/client, CLI `digital-taps`, and MCP `measure_digital_taps`
+  support five overlapping-window counts, individual digital/frequency reads,
+  and declared endpoint comparisons. Pending inputs cannot produce a diagnosis.
+- Dashboard `/api/taps` drains DUT serial during capture and shows generic
+  tap locations/status/counts. An endpoint activity mismatch cannot be hidden
+  by an otherwise passing analog telemetry comparison. Page inspected with
+  boards absent: D3/D4/D5 display pending and all measurements remain blank.
+- Telemetry checks now require **every** declared field to be fresh and valid;
+  fields may appear on separate serial lines. New malformed values cannot
+  fall back to an earlier good report.
+- DUT upload holds the serial lock, rechecks USB identity after acquiring it,
+  preserves refusal/failure evidence, and optionally checks a serial marker,
+  telemetry, and voltage targets. Harness specifies `build=plant-sentinel-v1`.
+  These postflash additions have unit tests but still need one live
+  upload-to-observation run. Serial markers do not attest the running binary.
+- Latest host run: 64 passed with local loopback access; JavaScript syntax
+  and Git whitespace checks passed. The local dashboard was restarted with
+  the new endpoint at `http://127.0.0.1:8765/`; check its process before reuse.
+- Next hardware action: after “three taps wired,” rediscover USB identities,
+  upload S3 v0.2 while holding its port lock, confirm `INFO`/`HELP`, check
+  P1/P2/P3 and current C6 telemetry, then capture D1–D5. No new C6 flash is
+  required for the tap expansion. Trigger an alert and measure D5 only after
+  the baseline passes. Do not count pending wiring or compilation as evidence.
+
 ## Where the code is
 
 This repository is the complete Benchy project. The Python package remains
@@ -313,11 +348,10 @@ and are not included in Git.
 
 ## Remaining work
 
-1. When hardware work resumes, inspect the IO8/IO9 series-resistor contacts
-   and confirm they land on the actual SDA/SCL rows. The S3 currently counts
-   zero edges despite healthy C6 MPU output, so transition capture remains
-   unvalidated. The P1/P2 10 kΩ/10 kΩ probes load the bus and must not be
-   assumed suitable for SDA/SCL.
+1. Complete and validate the permanent tap batch above. The original IO8/IO9
+   paths already passed grounded/common-SCL tests and an SCL-open/restored
+   fault test. The new five-input capture still needs live validation. The
+   P1/P2 dividers load nets and must not be moved onto I²C lines.
 2. For a new design, update the harness's DUT metadata and source-file list,
    verify each probe connection by hand, and add bounded physical test
    expectations. The GUI does not infer connectivity or flashed code.

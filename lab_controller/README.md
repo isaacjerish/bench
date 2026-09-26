@@ -16,3 +16,11 @@ The protocol is newline-delimited ASCII at 115200 baud. `HELP` lists commands.
 `MEASURE_FREQ P1 1000` counts rising edges in a one-second window and reports
 an optional high pulse width. Low frequencies need a longer window; very short
 pulses may be missed. No reading is a calibrated voltmeter measurement.
+
+Firmware v0.2 also supports P3 (ADC IO6 and digital IO7, each connected to
+the known 0–3.3 V node through its own series resistor, without a divider)
+and passive digital taps D1–D5 on IO8–IO12. `MEASURE_TAPS 1000` counts all
+five inputs over overlapping windows, while `READ_DIGITAL D5` and
+`MEASURE_FREQ D5 2000` inspect an individual tap. The original `MEASURE_BUS`
+command still observes IO8/IO9. No command enables drive mode or internal
+pulls. See `../PERMANENT_TAPS.md` for wiring, protocol, and capture limits.

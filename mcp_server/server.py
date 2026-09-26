@@ -11,7 +11,7 @@ from benchos.light import compare_light
 from benchos.checks import run_suite
 from benchos.dashboard import read_imu_report
 from benchos.harness import describe_harness as read_harness
-from benchos.flash import plan_dut_flash as read_flash_plan, build_dut_firmware
+from benchos.flash import plan_dut_flash as read_flash_plan, build_dut_firmware, flash_result_ok
 from benchos.telemetry import check_live_declared_telemetry
 from benchos.protocol import BenchError
 
@@ -73,8 +73,7 @@ def build_and_flash_dut() -> dict[str, Any]:
     """
     try:
         result = build_dut_firmware(flash=True)
-        return {"ok": bool(result["compile"]["ok"] and result["upload"]
-                           and result["upload"]["ok"]), **result}
+        return {"ok": flash_result_ok(result), **result}
     except (OSError, ValueError) as exc:
         return {"ok": False, "error": str(exc)}
 
@@ -109,6 +108,16 @@ def check_telemetry_against_probes() -> dict[str, Any]:
 def measure_bus_activity(duration_ms: int = 1000) -> dict[str, Any]:
     """Count approximate SDA/SCL transitions on declared 3.3 V read-only inputs; does not decode I²C."""
     return _measure("measure_bus_activity", duration_ms)
+
+
+@mcp.tool(structured_output=True)
+def measure_digital_taps(duration_ms: int = 1000) -> dict[str, Any]:
+    """Count D1–D5 input transitions over overlapping windows and compare declared endpoints.
+
+    Unconfirmed connections cannot support a diagnosis. Counts are approximate;
+    this does not decode protocols or establish continuity between endpoints.
+    """
+    return _measure("measure_digital_taps", duration_ms, timeout=5.0)
 
 
 @mcp.tool(structured_output=True)

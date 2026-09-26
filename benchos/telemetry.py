@@ -11,52 +11,64 @@ from .dashboard import DashboardState
 from .harness import describe_harness
 from .ports import available_ports
 
-FIELD_RE = re.compile(r"(?:^|\s)([A-Za-z][A-Za-z0-9_]{0,31})=(-?\d+(?:\.\d+)?)(?=\s|$)")
+FIELD_RE = re.compile(r"(?:^|\s)([A-Za-z][A-Za-z0-9_]{0,31})=(\S+)")
 
 
 def compare_declared_fields(probes: dict, serial_events: list[dict], rules: list[dict],
                             max_age_s: float = 5.0) -> dict:
     """Return bounded evidence; a missing or stale serial report is unverified."""
-    measured_at = datetime.fromisoformat(probes["timestamp"])
     readings = {row["probe"]: row for row in probes["readings"]
                 if row.get("declared_state") == "connected"}
-    for event in reversed(serial_events):
-        try:
-            age = abs((measured_at - datetime.fromisoformat(event["timestamp"])).total_seconds())
-        except (KeyError, TypeError, ValueError):
+    checks, missing, matched_lines = [], [], []
+    for rule in rules:
+        key = {"probe": rule["probe"], "field": rule["field"]}
+        row = readings.get(rule["probe"])
+        if row is None:
+            missing.append({**key, "reason": "Probe is not declared connected or was not sampled"})
             continue
-        if age > max_age_s:
-            continue
-        fields = {key: float(value) for key, value in FIELD_RE.findall(event.get("line", ""))}
-        if not fields:
-            continue
-        checks = []
-        for rule in rules:
-            row = readings.get(rule["probe"])
-            if row is None or rule["field"] not in fields:
+        measured_at = datetime.fromisoformat(row.get("timestamp", probes["timestamp"]))
+        reason = "No fresh report for this field"
+        for event in reversed(serial_events):
+            fields = dict(FIELD_RE.findall(event.get("line", "")))
+            if rule["field"] not in fields:
                 continue
-            claimed = fields[rule["field"]] * rule["scale_to_v"]
-            actual = float(row["voltage_v"])
+            # The latest report for a field is authoritative. Do not fall back
+            # to an earlier good value if the current report is malformed.
+            try:
+                age = abs((measured_at - datetime.fromisoformat(event["timestamp"])).total_seconds())
+                claimed = float(fields[rule["field"]]) * rule["scale_to_v"]
+                actual = float(row["voltage_v"])
+            except (KeyError, TypeError, ValueError):
+                reason = "Latest report has an invalid value or timestamp"
+                break
+            if age > max_age_s:
+                break
             if not math.isfinite(claimed) or not math.isfinite(actual):
-                continue
+                reason = "Latest value is not finite"
+                break
             delta = abs(actual - claimed)
-            checks.append({"probe": rule["probe"], "field": rule["field"],
+            checks.append({**key,
                            "declared_net": row.get("declared_net"),
                            "physical_v": actual, "dut_claim_v": round(claimed, 4),
                            "delta_v": round(delta, 4), "max_delta_v": rule["max_delta_v"],
+                           "sample_age_s": round(age, 3), "serial_timestamp": event["timestamp"],
                            "pass": delta <= rule["max_delta_v"]})
-        if checks:
-            return {"state": "pass" if all(item["pass"] for item in checks) else "fail",
-                    "source": "s3_physical_plus_dut_serial", "sample_age_s": round(age, 3),
-                    "serial_line": event["line"], "checks": checks,
-                    "scope": "Only declared probe nodes and fields; serial contents are DUT claims."}
-    return {"state": "unverified", "source": "s3_physical_plus_dut_serial",
-            "checks": [], "reason": "No fresh numeric serial fields matched connected probe declarations"}
+            matched_lines.append(event["line"])
+            reason = None
+            break
+        if reason:
+            missing.append({**key, "reason": reason})
+    state = "fail" if any(not item["pass"] for item in checks) else (
+        "unverified" if missing or not rules else "pass")
+    return {"state": state, "source": "s3_physical_plus_dut_serial",
+            "checks": checks, "missing_checks": missing, "expected_checks": len(rules),
+            "serial_lines": list(dict.fromkeys(matched_lines)),
+            "scope": "Only declared probe nodes and fields; serial contents are DUT claims."}
 
 
-def check_live_declared_telemetry() -> dict:
+def check_live_declared_telemetry(harness: dict | None = None) -> dict:
     """Read enrolled S3/C6 in overlapping windows, then compare declared fields."""
-    harness = describe_harness()
+    harness = describe_harness() if harness is None else harness
     ports = available_ports()
 
     def enrolled(serial: str) -> str:
@@ -72,7 +84,7 @@ def check_live_declared_telemetry() -> dict:
         raise ValueError("Lab and DUT ports must be distinct")
     with ThreadPoolExecutor(max_workers=2) as pool:
         serial_future = pool.submit(DashboardState().serial_sample, dut_port, 1200)
-        probes_future = pool.submit(DashboardState().probe_sample, lab_port)
+        probes_future = pool.submit(DashboardState().probe_sample, lab_port, harness)
         serial_result = serial_future.result()
         probe_result = probes_future.result()
     verdict = compare_declared_fields(probe_result, serial_result["events"],

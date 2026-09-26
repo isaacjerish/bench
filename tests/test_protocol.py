@@ -30,6 +30,11 @@ def test_measurement_lines_are_structured():
     "OK FREQUENCY P1 50 EDGES xx WINDOW_MS 250 PULSE_US 1500",
     "OK BUS SDA HIGH HIGH EDGES xx SCL HIGH HIGH EDGES 160 WINDOW_MS 1000",
     "OK BUS SDA HIGH HIGH EDGES 24 SCL MAYBE HIGH EDGES 160 WINDOW_MS 1000",
+    "OK TAPS WINDOW_MS 1000 D1 HIGH HIGH 4 D1 LOW LOW 2",
+    "OK TAPS WINDOW_MS 1000 D1 MAYBE HIGH 4",
+    "OK TAPS WINDOW_MS 1000 D1 HIGH HIGH -4",
+    "OK TAPS WINDOW_MS 0 D1 HIGH HIGH 4",
+    "OK TAPS WINDOW_MS 1000 D1 HIGH HIGH",
 ])
 def test_malformed_measurement_is_rejected(line):
     with pytest.raises(BenchProtocolError):
@@ -41,3 +46,12 @@ def test_device_error_and_command_validation():
         parse_response("ERR UNKNOWN_PROBE")
     with pytest.raises(ValueError):
         validate_probe("P1\nREAD_ADC P2")
+
+
+def test_taps_keep_each_endpoint_and_explicit_capture_limits():
+    result = parse_response("OK TAPS WINDOW_MS 1001 D1 HIGH HIGH 32 D2 HIGH HIGH 190 D3 HIGH HIGH 30 D4 HIGH HIGH 0 D5 LOW HIGH 3")
+    assert result["kind"] == "digital_taps"
+    assert result["taps"]["D4"]["edges"] == 0
+    assert result["taps"]["D5"] == {"start": "LOW", "end": "HIGH", "edges": 3}
+    assert result["capture_windows_overlap"] is True
+    assert result["decoded_transactions"] is False

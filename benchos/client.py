@@ -12,6 +12,7 @@ import serial
 
 from . import config, ports
 from .harness import describe_harness
+from .digital import describe_capture
 from .protocol import BenchError, BenchProtocolError, parse_response, validate_probe
 from .serial_lock import SerialPortLock
 
@@ -118,7 +119,7 @@ class BenchClient:
         return result
 
     def _log(self, result: dict) -> None:
-        if self.log_path and result["kind"] in ("voltage", "digital", "frequency", "bus_activity"):
+        if self.log_path and result["kind"] in ("voltage", "digital", "frequency", "bus_activity", "digital_taps"):
             record = {"timestamp": datetime.now(timezone.utc).isoformat(), **result}
             with Path(self.log_path).open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(record) + "\n")
@@ -132,7 +133,8 @@ class BenchClient:
     def measure_voltage(self, probe: str) -> dict:
         return self._request(f"READ_ADC {validate_probe(probe)}", "voltage")
 
-    def measure_voltage_pair(self, probe_a: str = "P1", probe_b: str = "P2") -> dict:
+    def measure_voltage_pair(self, probe_a: str = "P1", probe_b: str = "P2", *,
+                             probe_declarations: dict | None = None) -> dict:
         """Read two input probes in order; these are close in time, not simultaneous."""
         names = (validate_probe(probe_a), validate_probe(probe_b))
         if names[0] == names[1] or set(names) != {"P1", "P2"}:
@@ -142,7 +144,7 @@ class BenchClient:
         first = self.measure_voltage(names[0])
         second_at = datetime.now(timezone.utc).isoformat()
         second = self.measure_voltage(names[1])
-        declared = describe_harness()["probes"]
+        declared = describe_harness()["probes"] if probe_declarations is None else probe_declarations
         def metadata(name: str) -> dict:
             item = declared[name]
             return {"declared_state": item["state"],
@@ -170,3 +172,13 @@ class BenchClient:
         result = self._request(f"MEASURE_BUS {duration_ms}", "bus_activity")
         return {**result, "wiring_source": "user_declared",
                 "sda_net": monitor["sda_net"], "scl_net": monitor["scl_net"]}
+
+    def measure_digital_taps(self, duration_ms: int = 1000) -> dict:
+        """Count five passive inputs together; pending inputs cannot support a diagnosis."""
+        if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or not 10 <= duration_ms <= 2000:
+            raise ValueError("duration_ms must be an integer from 10 to 2000")
+        declared = describe_harness().get("digital_taps", {})
+        if not any(item["state"] == "connected" for item in declared.values()):
+            raise BenchError("No digital taps are declared connected; check harness/current.yaml")
+        result = self._request(f"MEASURE_TAPS {duration_ms}", "digital_taps")
+        return describe_capture(result, declared)

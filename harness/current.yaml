@@ -21,6 +21,10 @@ source_files:
 telemetry_checks:
   - {probe: P1, field: light_mv, scale_to_v: 0.001, max_delta_v: 0.45}
   - {probe: P3, field: water_mv, scale_to_v: 0.001, max_delta_v: 0.45}
+postflash:
+  serial_marker: build=plant-sentinel-v1
+  timeout_s: 8
+  check_telemetry: true
 probes:
   P1:
     state: connected
@@ -45,6 +49,12 @@ probes:
     adc: S3 IO6 through 10k series resistor, no divider
     digital: S3 IO7 through separate 10k series resistor
     note: user connected water sensor plus to C6 3V3, minus to shared GND, S to C6 IO2 and separate 10k series S3 IO6/IO7 branches; S3 measured 0.000 V dry and 0.833–0.897 V wet
+digital_taps:
+  D1: {state: connected, net: MPU_SDA, endpoint: MPU SDA row, gpio: 8, series_resistor_ohm: 10000}
+  D2: {state: connected, net: MPU_SCL, endpoint: MPU SCL row, gpio: 9, series_resistor_ohm: 10000}
+  D3: {state: pending, net: MPU_SDA, endpoint: C6 IO5 source junction, gpio: 10, series_resistor_ohm: 6800}
+  D4: {state: pending, net: MPU_SCL, endpoint: C6 IO7 source junction, gpio: 11, series_resistor_ohm: 6800}
+  D5: {state: pending, net: ALARM_DRIVE, endpoint: C6 IO20 before LED resistor, gpio: 12, series_resistor_ohm: 6800}
 bus_monitor:
   state: connected
   sda_net: MPU_SDA

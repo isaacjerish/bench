@@ -236,14 +236,14 @@ class DashboardState:
                     "continuous": False, "latest_seq": self._serial_seq,
                     "events": [item for item in self._serial_events if item["seq"] > after_seq]}
 
-    def probe_sample(self, port: str) -> dict:
+    def probe_sample(self, port: str, harness: dict | None = None) -> dict:
         if port not in set(candidate_ports()):
             raise ValueError("S3 port is not currently available")
-        probes = describe_harness()["probes"]
+        probes = (describe_harness() if harness is None else harness)["probes"]
         with self._lock:
             with BenchClient(port) as client:
                 started = time.monotonic()
-                pair = client.measure_voltage_pair()
+                pair = client.measure_voltage_pair(probe_declarations=probes)
                 if probes["P3"]["state"] == "connected":
                     reading = client.measure_voltage("P3")
                     pair["readings"].append({"timestamp": datetime.now(timezone.utc).isoformat(),
@@ -259,7 +259,7 @@ class DashboardState:
         pair["voltage_limit_v"] = 3.3
         return pair
 
-    def bus_sample(self, port: str, duration_ms: int, dut_port: str = "") -> dict:
+    def bus_sample(self, port: str, duration_ms: int, dut_port: str = "", *, digital_taps: bool = False) -> dict:
         known = set(candidate_ports())
         if port not in known:
             raise ValueError("S3 port is not currently available")
@@ -294,7 +294,8 @@ class DashboardState:
                 stream_ready.wait(1.5)
             try:
                 with BenchClient(port, timeout=4.0) as client:
-                    result = client.measure_bus_activity(duration_ms)
+                    result = (client.measure_digital_taps(duration_ms) if digital_taps
+                              else client.measure_bus_activity(duration_ms))
             finally:
                 stream_stop.set()
                 if reader:
@@ -393,13 +394,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except (BenchError, OSError) as exc:
                 self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
             return
-        if route.path == "/api/bus":
+        if route.path in {"/api/bus", "/api/taps"}:
             query = parse_qs(route.query)
             port = query.get("lab_port", [""])[0]
             dut_port = query.get("dut_port", [""])[0]
             try:
                 duration_ms = int(query.get("duration_ms", ["1000"])[0])
-                self._json(self.server.state.bus_sample(port, duration_ms, dut_port))
+                self._json(self.server.state.bus_sample(port, duration_ms, dut_port,
+                                                       digital_taps=route.path == "/api/taps"))
             except ValueError as exc:
                 self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             except (BenchError, OSError) as exc:

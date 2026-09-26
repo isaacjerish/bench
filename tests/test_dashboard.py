@@ -92,7 +92,7 @@ def test_probe_explorer_preserves_order_and_declared_source(monkeypatch):
         def __exit__(self, *_args):
             pass
 
-        def measure_voltage_pair(self):
+        def measure_voltage_pair(self, **_kwargs):
             return {"simultaneous": False, "wiring_source": "user_declared",
                     "readings": [{"probe": "P1", "voltage_v": 2.1, "declared_net": "LIGHT_SENSE"},
                                  {"probe": "P2", "voltage_v": 3.2, "declared_net": "MPU_VCC"}]}
@@ -137,6 +137,31 @@ def test_bus_sample_reports_raw_activity_without_claiming_decode(monkeypatch):
     assert result["decoded_transactions"] is False
 
 
+def test_dashboard_selects_five_input_capture_without_dut(monkeypatch):
+    class FakeClient:
+        def __init__(self, _port, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def measure_digital_taps(self, duration_ms):
+            return {"kind": "digital_taps", "window_ms": duration_ms,
+                    "taps": {"D5": {"edges": 4}}, "comparisons": []}
+
+    monkeypatch.setattr("benchos.dashboard.candidate_ports", lambda: ["/dev/fake"])
+    monkeypatch.setattr("benchos.dashboard.BenchClient", FakeClient)
+    result = DashboardState().bus_sample("/dev/fake", 1000, digital_taps=True)
+    assert result["kind"] == "digital_taps"
+    assert result["taps"]["D5"]["edges"] == 4
+    assert result["source"] == "s3_physical"
+    assert result["decoded_transactions"] is False
+    assert result["dut_stream_open_during_capture"] is False
+
+
 def test_dashboard_serves_assets_and_snapshot_without_hardware(monkeypatch):
     state = DashboardState()
     try:
@@ -172,6 +197,9 @@ def test_dashboard_serves_assets_and_snapshot_without_hardware(monkeypatch):
         assert blocked.value.code == 400
         with pytest.raises(HTTPError) as blocked:
             urlopen(base + "/api/serial?port=/dev/not-a-device")
+        assert blocked.value.code == 400
+        with pytest.raises(HTTPError) as blocked:
+            urlopen(base + "/api/taps?lab_port=/dev/not-a-device")
         assert blocked.value.code == 400
         with pytest.raises(HTTPError) as blocked:
             urlopen(base + "/api/probes?lab_port=/dev/not-a-device")

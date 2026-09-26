@@ -7,7 +7,7 @@ def test_mcp_exposes_explicit_structured_tools():
     tools = {tool.name: tool for tool in asyncio.run(mcp.list_tools())}
     assert set(tools) == {
         "lab_ping", "lab_info", "describe_harness", "plan_dut_flash", "build_and_flash_dut", "measure_voltage", "measure_voltage_pair", "measure_bus_activity", "read_digital", "measure_frequency",
-        "compare_light_sensor", "check_circuit", "read_imu_stream", "check_telemetry_against_probes"
+        "compare_light_sensor", "check_circuit", "read_imu_stream", "check_telemetry_against_probes", "measure_digital_taps"
     }
     assert tools["measure_voltage"].output_schema is not None
     assert tools["measure_frequency"].input_schema["properties"]["duration_ms"]["default"] == 250

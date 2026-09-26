@@ -24,6 +24,12 @@ static constexpr size_t PROBE_COUNT = sizeof(PROBES) / sizeof(PROBES[0]);
 // exposed and the observed bus is 0–3.3 V; these pins are not 5 V tolerant.
 static constexpr uint8_t BUS_SDA_GPIO = 8;
 static constexpr uint8_t BUS_SCL_GPIO = 9;
+struct DigitalTapConfig { const char *name; uint8_t pin; };
+// Passive 0–3.3 V taps. No pullups, pulldowns, or drive mode are enabled.
+static const DigitalTapConfig DIGITAL_TAPS[] = {
+    {"D1", 8}, {"D2", 9}, {"D3", 10}, {"D4", 11}, {"D5", 12},
+};
+static constexpr size_t DIGITAL_TAP_COUNT = sizeof(DIGITAL_TAPS) / sizeof(DIGITAL_TAPS[0]);
 static constexpr uint32_t SERIAL_BAUD = 115200;
 static constexpr uint16_t ADC_SAMPLES = 32;
 static constexpr size_t MAX_COMMAND_LENGTH = 96;

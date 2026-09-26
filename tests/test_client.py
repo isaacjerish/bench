@@ -92,3 +92,22 @@ def test_bus_monitor_refuses_unwired_inputs(monkeypatch):
     client = BenchClient("/dev/fake", startup_delay=0)
     with pytest.raises(BenchError, match="not declared connected"):
         client.measure_bus_activity()
+
+
+def test_tap_capture_keeps_raw_evidence_but_excludes_pending_connection(monkeypatch):
+    FakeSerial.replies = [b"OK PONG\n", b"OK TAPS WINDOW_MS 1000 D1 HIGH HIGH 80 D3 LOW LOW 0\n"]
+    monkeypatch.setattr("benchos.client.serial.Serial", FakeSerial)
+    monkeypatch.setattr("benchos.client.describe_harness", lambda: {"digital_taps": {
+        "D1": {"state": "connected", "net": "DATA", "endpoint": "receiver"},
+        "D3": {"state": "pending", "net": "DATA", "endpoint": "source"}}})
+    with BenchClient("/dev/fake", startup_delay=0) as client:
+        result = client.measure_digital_taps()
+    assert result["taps"]["D1"]["edges"] == 80
+    assert result["comparisons"][0]["assessment"] == "unverified"
+
+
+def test_taps_refuse_invalid_window_before_touching_hardware():
+    client = BenchClient("/dev/fake")
+    for duration in [True, 0, 2001, "1000"]:
+        with pytest.raises(ValueError):
+            client.measure_digital_taps(duration)

@@ -1,6 +1,6 @@
 const el = (id) => document.getElementById(id);
 const names = ['P1', 'P2', 'P3'];
-let harness = null, latestSample = null, latestBus = null, inventory = null;
+let harness = null, latestSample = null, latestBus = null, latestTaps = null, inventory = null;
 let preview = false, auto = true, probeBusy = false, busBusy = false, serialBusy = false, serialPaused = false;
 let serialSeq = 0, serialEvents = [], session = [];
 try {
@@ -58,6 +58,7 @@ function renderHarness() {
   setText('bus-sda-net', monitor.sda_net || 'UNDECLARED');
   setText('bus-scl-net', monitor.scl_net || 'UNDECLARED');
   if (monitor.state !== 'connected') setText('bus-status', 'Sense inputs ' + (monitor.state || 'undeclared') + ' · user declaration');
+  renderTaps(null);
   renderAssessment();
 }
 async function loadHarness() {
@@ -111,16 +112,20 @@ function evaluate(sample) {
   const failed = checks.find(item => !item.pass);
   if (disconnected.length) return {state:'unknown', label:'WIRING NOT CONFIRMED', title:'Probe assignment unclear.', detail:disconnected.map(row => row.probe).join(' and ') + ' has no confirmed net in the declaration. Its voltage is real, but the node identity is unknown.', next:'Confirm the probe tip and shared ground, then update the declared connection.'};
   if (failed) return {state:'fail', label:'MEASURED TARGET MISSED', title:failed.net + ' is outside target.', detail:failed.probe + ' measured ' + failed.value.toFixed(3) + ' V; the declared range is ' + failed.min.toFixed(2) + '–' + failed.max.toFixed(2) + ' V.', next:'Check the power source, ground path, and load at ' + failed.net + ', then sample again.'};
-  const comparisons = [];
+  const comparisons = [], missingComparisons = [];
   if (!preview && harness && Array.isArray(harness.telemetry_checks)) {
-    const recent = [...serialEvents].reverse().find(item =>
-      Math.abs(Date.parse(item.timestamp) - Date.parse(sample.timestamp)) <= 5000 && item.line.includes('='));
-    if (recent) for (const rule of harness.telemetry_checks) {
+    for (const rule of harness.telemetry_checks) {
       const physical = sample.readings.find(row => row.probe === rule.probe && row.declared_state === 'connected');
-      const match = recent.line.match(new RegExp('(?:^|\\s)' + rule.field + '=(-?\\d+(?:\\.\\d+)?)(?=\\s|$)'));
-      if (!physical || !match) continue;
+      const pattern = new RegExp('(?:^|\\s)' + rule.field + '=(\\S+)');
+      const recent = [...serialEvents].reverse().find(item => pattern.test(item.line));
+      const match = recent && recent.line.match(pattern);
+      const fresh = physical && recent && Math.abs(Date.parse(recent.timestamp) - Date.parse(physical.timestamp || sample.timestamp)) <= 5000;
+      if (!fresh || !match || !/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?$/.test(match[1])) {
+        missingComparisons.push(rule.field); continue;
+      }
       const claimed = Number(match[1]) * Number(rule.scale_to_v);
       if (Number.isFinite(claimed)) comparisons.push({rule, physical:Number(physical.voltage_v), claimed, delta:Math.abs(claimed - Number(physical.voltage_v))});
+      else missingComparisons.push(rule.field);
     }
   }
   const disagreement = comparisons.find(item => item.delta > Number(item.rule.max_delta_v));
@@ -128,6 +133,10 @@ function evaluate(sample) {
     detail:'DUT serial claims ' + disagreement.claimed.toFixed(3) + ' V; S3 measured ' + disagreement.physical.toFixed(3) + ' V at the declared net. Difference ' + disagreement.delta.toFixed(3) + ' V exceeds ' + Number(disagreement.rule.max_delta_v).toFixed(3) + ' V.',
     next:'Check ADC scaling, selected pin, and report logic. Repeat with a controlled change at the sensor.'};
   const busIsFresh = latestBus && !preview && Math.abs(Date.parse(latestBus.timestamp) - Date.parse(sample.timestamp)) < 15000;
+  const tapsAreFresh = latestTaps && !preview && Math.abs(Date.parse(latestTaps.timestamp) - Date.parse(sample.timestamp)) < 15000;
+  const endpointMismatch = tapsAreFresh && latestTaps.comparisons.find(item => item.assessment === 'activity_mismatch');
+  if (endpointMismatch) return {state:'unknown', label:'ENDPOINT ACTIVITY DIFFERS', title:endpointMismatch.net + ' needs a closer look.',
+    detail:endpointMismatch.detail, next:'Check the declared connection and both probe branches. Repeat during sustained traffic; edge counts cannot identify the exact broken contact.'};
   if (busIsFresh && latestBus.sda.edges > 0 && latestBus.scl.edges === 0) {
     const recentError = [...serialEvents].reverse().find(item => /ERROR|FAIL/i.test(item.line) && Math.abs(Date.parse(item.timestamp) - Date.parse(latestBus.timestamp)) < 15000);
     return {state:'fail', label:'CLOCK PATH NEEDS CHECK', title:'Data moved; clock stayed static.',
@@ -144,6 +153,9 @@ function evaluate(sample) {
   if (freshError) return {state:'fail', label:'DUT REPORTED ERROR', title:'The device reports a fault.',
     detail:'Fresh DUT serial output: ' + freshError.line + '. The S3 values above describe only the probed nodes.',
     next:'Use probe and bus readings to narrow the physical cause, then repeat after the repair.'};
+  if (missingComparisons.length) return {state:'unknown', label:'COMPARISON INCOMPLETE', title:'Awaiting all declared fields.',
+    detail:'Fresh paired evidence is missing for ' + missingComparisons.join(', ') + '. ' + comparisons.length + ' other comparison(s) matched within tolerance.',
+    next:'Keep the device stream running and the input steady, then repeat the sample.'};
   if (comparisons.length) return {state:'pass', label:'REPORTS AGREE WITH PROBES', title:'Independent readings agree.', detail:comparisons.length + ' declared serial field' + (comparisons.length === 1 ? '' : 's') + ' matched fresh S3 probe readings within configured tolerance.', next:'Change one input or introduce a reversible fault, then capture both sources again.'};
   if (checks.length) return {state:'pass', label:'PHYSICAL TARGETS MET', title:'Checked nodes are in range.', detail:checks.length + ' declared target' + (checks.length === 1 ? '' : 's') + ' matched the S3 readings. This says nothing about unprobed parts of the design.', next:'Sample during the failing behavior, then inspect the device serial output or move a probe to a discriminating node.'};
   return {state:'observed', label:'PHYSICAL VALUES CAPTURED', title:sample.readings.length + ' nodes measured.', detail:'The S3 recorded the connected probe voltages. Add expected ranges to get a bounded pass/fail check for this design.', next:'Declare a target voltage range or compare readings before and after a controlled stimulus.'};
@@ -228,6 +240,7 @@ function previewBus() {
 function renderBus(sample) {
   latestBus = sample;
   if (!sample) {
+    renderTaps(null);
     for (const line of ['sda', 'scl']) { setText('bus-' + line + '-edges', '—'); setText('bus-' + line + '-level', 'Awaiting sample'); }
     setText('bus-title', 'No bus evidence yet.');
     setText('bus-detail', 'Bench can count transitions on declared read-only inputs. Edge counts do not decode transactions or prove which wire is faulty.');
@@ -256,6 +269,33 @@ function renderBus(sample) {
   setText('bus-status', (sample.source === 'preview' ? 'PREVIEW · SAMPLE DATA' : 'S3 PHYSICAL · APPROXIMATE COUNT') + stream + ' · ' + timeLabel(sample.timestamp));
   renderAssessment();
 }
+function renderTaps(sample) {
+  latestTaps = sample;
+  const target = el('digital-tap-rows');
+  target.replaceChildren();
+  const declared = harness && harness.digital_taps || {};
+  for (const [name, tap] of Object.entries(declared)) {
+    const reading = sample && sample.taps[name];
+    const usable = tap.state === 'connected' && reading && reading.usable_for_diagnosis;
+    const row = document.createElement('tr');
+    for (const value of [name + ' · IO' + tap.gpio, tap.net, tap.endpoint,
+      usable ? reading.start + ' → ' + reading.end : tap.state.replaceAll('_', ' '),
+      usable ? String(reading.edges) : '—']) {
+      const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
+    }
+    target.append(row);
+  }
+  const comparisons = el('digital-tap-comparisons'); comparisons.replaceChildren();
+  for (const item of sample && sample.comparisons || []) {
+    const row = document.createElement('p');
+    const label = document.createElement('strong'); label.textContent = item.net + ' · ' + item.taps.join(' / ') + ': ';
+    row.append(label, document.createTextNode(item.detail)); comparisons.append(row);
+  }
+  setText('digital-tap-status', sample
+    ? 'S3 PHYSICAL · ' + sample.window_ms + ' ms · ' + timeLabel(sample.timestamp) + ' · counts are approximate'
+    : 'Awaiting capture. Pending connections are excluded from diagnosis.');
+  el('export-taps').disabled = !sample;
+}
 async function sampleBus() {
   if (busBusy) return;
   if (preview) { renderBus(previewBus()); return; }
@@ -264,10 +304,17 @@ async function sampleBus() {
   if (!port) { setText('bus-status', 'Choose the identified S3 port.'); return; }
   busBusy = true; el('sample-bus').disabled = true; setText('bus-status', 'Counting read-only transitions…');
   try {
-    const response = await fetch('/api/bus?' + new URLSearchParams({lab_port:port,dut_port:el('dut-port').value,duration_ms:'1000'}), {cache:'no-store'});
+    const hasTaps = harness.digital_taps && Object.keys(harness.digital_taps).length > 0;
+    const response = await fetch((hasTaps ? '/api/taps?' : '/api/bus?') + new URLSearchParams({lab_port:port,dut_port:el('dut-port').value,duration_ms:'1000'}), {cache:'no-store'});
     const data = await response.json();
     if (!response.ok) throw Error(data.error || 'Bus sample failed');
-    if (port === el('lab-port').value) renderBus(data);
+    if (port === el('lab-port').value && !preview) {
+      if (hasTaps) {
+        renderTaps(data);
+        if (data.taps.D1 && data.taps.D1.usable_for_diagnosis && data.taps.D2 && data.taps.D2.usable_for_diagnosis)
+          renderBus({...data, sda:data.taps.D1, scl:data.taps.D2});
+      } else renderBus(data);
+    }
   } catch (error) { setText('bus-status', 'Bus unavailable: ' + error.message); }
   finally { busBusy = false; el('sample-bus').disabled = false; }
 }
@@ -411,6 +458,7 @@ for (const kind of ['lab', 'dut']) el(kind + '-port').addEventListener('change',
 });
 el('sample-probes').addEventListener('click', sampleProbes);
 el('sample-bus').addEventListener('click', sampleBus);
+el('export-taps').addEventListener('click', () => { if (latestTaps) download('benchy-digital-taps.json', latestTaps); });
 el('auto-sample').addEventListener('click', () => { auto = !auto; el('auto-sample').setAttribute('aria-pressed', String(auto)); setText('auto-sample', auto ? 'Live: on' : 'Live: off'); if (auto) { sampleProbes(); sampleBus(); } });
 el('export-probes').addEventListener('click', () => { if (latestSample) download('benchy-probes.json', latestSample); });
 el('probe-declaration-form').addEventListener('submit', saveDeclaration);

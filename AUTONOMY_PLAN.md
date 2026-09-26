@@ -1,4 +1,4 @@
-# Benchy: from two probes to an agent-operated lab
+# Benchy: toward an agent-operated lab
 
 Status: proposed build plan, 2026-09-26. This document separates capabilities
 already measured on hardware from work that still needs wiring and validation.
@@ -17,9 +17,10 @@ intended nets and behavior, the agent should be able to:
 5. Preserve the evidence chain: hypothesis, probe location, raw result,
    limits, firmware revision, action, and before/after result.
 
-Two probes cannot scan an uninstrumented breadboard automatically. Initially,
-the agent will guide a person to move a probe. Later, fixed leads or a guarded
-switch matrix can let it visit several declared nets unattended. A diagram or
+Three analog probes cannot scan an uninstrumented breadboard automatically.
+The current expansion adds fixed digital taps at both ends of critical signal
+wires and at the LED control node; see `PERMANENT_TAPS.md`. A later guarded
+switch matrix could visit more declared nets unattended. A diagram or
 photo may help propose hypotheses, but electrical readings remain the proof.
 
 ## Current baseline and gaps
@@ -29,7 +30,8 @@ photo may help propose hypotheses, but electrical readings remain the proof.
 | P1/P2 DC voltage, digital level, edge count, pulse width | Live 3.3 V/GND, LED, PWM, light, and MPU-supply readings in `VALIDATION.md` | More points, better input protection and calibration; current probes only accept known 0–3.3 V nodes and load the net |
 | C6 serial output and source view | Live MPU serial lines; local file hashes and Git revision | Reliable mapping from source/build to flashed binary; protocol-independent capture and parsing |
 | I²C observation | IO8/IO9 grounded and common-SCL checks passed; restored SDA/SCL counted 508/1,935 transitions in 2 s with C6 serial open | Timed capture and I²C address/ACK decode; better input protection |
-| DUT flashing | Generic `build-dut`, `flash-dut`, and MCP `build_and_flash_dut` compiled and flashed declared `imu_demo` to the unique C6 USB serial; Arduino verified flash hashes | Automatic boot marker, build identity, and declared postflash electrical checks |
+| DUT flashing | Generic build/flash CLI and MCP physically exercised; upload locking and optional marker/telemetry/range postchecks now implemented with host tests | Live acceptance of automatic postchecks; binary identity remains unverified |
+| Permanent digital taps | S3 IO8–IO12 v0.2 compiled; generic host/MCP/dashboard endpoint comparison implemented | Confirm three new 6.8 kΩ branches, upload S3, and validate all five inputs together |
 | Physical checks | Named fixed demo profiles | User-defined expectations tied to net names, design version, and measured evidence |
 | Active tests, current, 5 V, unknown nodes | None | Separate protected hardware; existing S3 inputs must not be repurposed as outputs |
 
@@ -49,10 +51,12 @@ path, board FQBN, and unique USB identity. Current implementation:
 - Reports compilation and upload separately; flashed firmware identity and
   whole-circuit function remain explicitly **unverified**.
 
-Next: add a per-design boot marker and bounded postflash probe checks, then
-capture those outcomes in the same evidence record. The current C6 sketch
-was manually observed after a verified upload: fresh IMU serial data, 3.217 V
-sensor supply, and SDA/SCL activity. This observation is in `VALIDATION.md`.
+Implemented: optional per-design serial marker and bounded telemetry/voltage
+postchecks stored in the same evidence record, plus a serial lock for upload
+and another USB identity check after lock acquisition. Next: exercise the
+complete automatic sequence on hardware. Earlier manual after-upload checks
+showed fresh IMU data, 3.217 V sensor supply, and SDA/SCL activity, recorded in
+`VALIDATION.md`. Current C6 firmware is the combined `plant_sentinel`.
 
 Acceptance: intentionally wrong DUT port is refused; a compile failure leaves
 the current firmware running; a known-good C6 sketch flashes, reports its build
@@ -79,10 +83,13 @@ The user has a multimeter, **not** a USB logic analyzer, and wants Benchy to
 avoid depending on the meter for routine diagnosis. The S3 P2 probe measured
 3.227 V at the MPU supply before connecting IO8/IO9. The user then connected
 IO8/IO9 through separate 10 kΩ series resistors to the known 3.3 V MPU bus.
-The monitor firmware booted, but initial 1 s and 2 s samples showed both
-inputs HIGH with zero edges despite live C6 MPU reports. The sense contacts or
-capture path need validation. This is **not** an I²C decoder. Series resistors
-do not make an S3 input tolerant of 5 V or unknown voltages.
+Initial captures showed zero edges. Grounded-input and common-SCL checks
+subsequently passed, and the restored leads counted SDA/SCL activity with
+the DUT serial stream held open. An SCL-open test showed sensor-side clock
+inactivity with VCC still present and a DUT communication error; restoring
+the jumper restored activity and motion reports. This is **not** an I²C
+decoder. Series resistors do not make an S3 input tolerant of 5 V or unknown
+voltages. The five-tap expansion needs its own live acceptance after wiring.
 
 Next, investigate a bounded two-channel capture on the S3, using a peripheral
 such as RMT rather than relying on host USB timing. Decode START/STOP,
@@ -134,14 +141,13 @@ Unmapped nets and output-on-output connections are refused.
 
 1. USB identities were confirmed by chip type: S3 `94:A9:90:DB:BA:64`, C6
    `A0:85:E3:DA:BD:80`. The current `/dev/cu` ports are in `HANDOFF.md`.
-2. The S3 now boots bus-monitor firmware and the user has connected IO8/IO9.
-   When they return, inspect the two series-resistor contact rows and repeat
-   a 1 s activity sample while the C6 reports MPU data.
-3. Keep P1/P2 on their present nodes. Do not use the meter as an ongoing
+2. Await completion of the permanent tap batch; upload S3 v0.2 and compare
+   both ends of SDA/SCL over one capture window. Check the LED drive on D5.
+3. Keep P1/P2/P3 on their present nodes. Do not use the meter as an ongoing
    Benchy dependency; a reference meter is optional for calibrating future
    protected voltage ranges.
-4. In parallel, implement phase 1 without wiring changes; it yields the
-   largest immediate gain in agent autonomy.
+4. On the next necessary C6 firmware change, validate the automatic postflash
+   marker, telemetry, and voltage-target observations end to end.
 
 ## Scope boundary
 

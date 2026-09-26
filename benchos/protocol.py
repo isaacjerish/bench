@@ -68,6 +68,20 @@ def parse_response(line: str) -> dict:
                 "raw": _nonnegative_int(parts[5]), "samples": _nonnegative_int(parts[7])}
     if kind == "DIGITAL" and len(parts) == 4 and parts[3] in ("HIGH", "LOW"):
         return {"kind": "digital", "probe": parts[2], "state": parts[3]}
+    if kind == "TAPS" and len(parts) >= 8 and parts[2] == "WINDOW_MS" and (len(parts) - 4) % 4 == 0:
+        window = _nonnegative_int(parts[3])
+        if not window or len(parts) > 68:
+            raise BenchProtocolError("Invalid digital tap capture window or channel count")
+        taps = {}
+        for offset in range(4, len(parts), 4):
+            name, start, end, edges = parts[offset:offset + 4]
+            if (not re.fullmatch(r"D[1-9][0-9]?", name) or name in taps
+                    or start not in {"HIGH", "LOW"} or end not in {"HIGH", "LOW"}):
+                raise BenchProtocolError("Invalid or duplicate digital tap")
+            taps[name] = {"start": start, "end": end, "edges": _nonnegative_int(edges)}
+        return {"kind": "digital_taps", "window_ms": window,
+                "edge_counts_approximate": True, "capture_windows_overlap": True,
+                "decoded_transactions": False, "taps": taps}
     if (kind == "FREQUENCY" and len(parts) == 10 and parts[4] == "EDGES"
             and parts[6] == "WINDOW_MS" and parts[8] == "PULSE_US"):
         return {"kind": "frequency", "probe": parts[2], "frequency_hz": _finite_float(parts[3]),

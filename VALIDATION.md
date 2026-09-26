@@ -84,12 +84,11 @@ of the Elegoo module's exact input/output labels and power source. The
 three-wire SG90 needs no external H-bridge; its red power lead must go to an
 appropriate separate 5 V source, not an ESP32 rail.
 
-The C6 currently runs the MPU demo with `DEMO_FAULT=0`. The photoresistor sensor
-node remains connected to S3 P1, but the C6 must be reflashed with
-`light_sensor_demo` before another light comparison. The earlier LED sketch is still available, but the
-LED/resistor branch and C6 GPIO20 wire have been removed for this test. The
-servo sketch remains in `dut_examples/servo_demo` and can be reflashed when a
-suitable servo power source is available.
+The C6 currently runs `plant_sentinel` with `DEMO_FAULT=0`: light on IO1,
+water on IO2, MPU SDA/SCL on IO5/IO7, and an LED/resistor on IO20. The generic
+`check-telemetry` compares its light/water reports with P1/P3; the older
+`light-compare` requires the separate `light_sensor_demo` sketch. The servo
+sketch remains available when an appropriate separate power source is ready.
 
 The replacement MPU is wired and responds over I²C with plausible still and
 tilted values. The first module had a saturated Z axis. The stream is not
@@ -104,3 +103,18 @@ The IO8/IO9 path passed grounded-input and common-SCL checks, then counted
 transitions on the restored SDA/SCL branches. The read-only bus monitor does
 not decode I²C traffic. Its capture should keep the DUT serial stream open
 for sketches that pause their I/O loop without a serial reader.
+
+## Permanent-tap software checkpoint (2026-09-26)
+
+- S3 v0.2 compiled for `esp32:esp32:esp32s3:CDCOnBoot=cdc`: 315,258 bytes
+  program, 23,336 bytes globals. The new IO8–IO12 capture is **not yet
+  uploaded or physically validated**. D3–D5 wiring confirmation is pending.
+- Host tests: 64 passed with local loopback access;
+  JS syntax and whitespace checks passed. Coverage includes malformed tap
+  responses, unconfirmed inputs, endpoint activity mismatch, missing telemetry
+  fields, upload locking, exact serial markers, and missing postflash evidence.
+- Dashboard inspected with both boards absent: no invented measurements,
+  new taps marked pending, and current local source visible. API is restarted
+  with `/api/taps`; live data requires the new S3 firmware and connected boards.
+- These checks establish software behavior and compilation only. The next
+  physical acceptance is the sequence in `PERMANENT_TAPS.md`.

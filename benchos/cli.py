@@ -10,7 +10,7 @@ from .checks import run_suite
 from .client import BenchClient
 from .light import compare_light
 from .harness import describe_harness
-from .flash import plan_dut_flash, build_dut_firmware
+from .flash import plan_dut_flash, build_dut_firmware, flash_result_ok
 from .telemetry import check_live_declared_telemetry
 from .ports import available_ports
 from .protocol import BenchError
@@ -32,6 +32,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("pair-voltage", help="Read P1 then P2, close in time but not simultaneously")
     bus = sub.add_parser("bus-activity", help="Observe declared SDA/SCL read-only monitor inputs")
     bus.add_argument("--duration-ms", type=int, default=1000)
+    taps = sub.add_parser("digital-taps", help="Observe fixed input taps and compare declared endpoints")
+    taps.add_argument("--duration-ms", type=int, default=1000)
     frequency = sub.add_parser("frequency")
     frequency.add_argument("probe")
     frequency.add_argument("--duration-ms", type=int, default=1000)
@@ -67,8 +69,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             result = build_dut_firmware(flash=args.command == "flash-dut")
             print(json.dumps(result, indent=2))
-            return 0 if result["compile"]["ok"] and (args.command == "build-dut" or
-                    result["upload"] and result["upload"]["ok"]) else 1
+            ok = result["compile"]["ok"] if args.command == "build-dut" else flash_result_ok(result)
+            return 0 if ok else 1
         except (OSError, ValueError) as exc:
             print(f"Benchy error: {exc}", file=sys.stderr)
             return 2
@@ -92,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
                 result = client.measure_voltage_pair()
             elif args.command == "bus-activity":
                 result = client.measure_bus_activity(args.duration_ms)
+            elif args.command == "digital-taps":
+                result = client.measure_digital_taps(args.duration_ms)
             elif args.command == "digital":
                 result = client.read_digital(args.probe)
             elif args.command == "frequency":

@@ -75,10 +75,54 @@ def test_upload_rechecks_identity_and_records_artifact(tmp_path, monkeypatch):
         return ports
     result = build_dut_firmware(flash=True, harness=harness, ports_provider=discover,
                                 root=tmp_path, runs_dir=tmp_path / "runs")
-    assert seen == 2
+    assert seen == 3
     assert commands[1][1] == "upload"
     assert commands[1][commands[1].index("--port") + 1] == "/dev/dut"
     assert "custom_design.ino.bin" in result["artifact_sha256"]
     assert result["upload"]["status"] == "reported_success"
     assert result["flashed_firmware_verified"] is False
     assert (Path(result["run_dir"]) / "evidence.json").is_file()
+
+
+def test_upload_holds_serial_lock_and_required_postcheck_controls_success(tmp_path, monkeypatch):
+    from pathlib import Path
+    from benchos.flash import flash_result_ok
+    from benchos.serial_lock import SerialPortLock
+    from benchos.protocol import BenchError
+    harness, ports = fixture(tmp_path)
+    harness["postflash"] = {"serial_marker": "build=test", "check_telemetry": True}
+    monkeypatch.setattr("benchos.serial_lock.tempfile.gettempdir", lambda: str(tmp_path))
+    def command(argv, log, _timeout):
+        if argv[1] == "compile":
+            (Path(argv[argv.index("--build-path") + 1]) / "app.bin").write_bytes(b"app")
+        else:
+            with pytest.raises(BenchError, match="busy"):
+                with SerialPortLock("/dev/dut", timeout_s=0):
+                    pass
+        return {"ok": True, "tail": "done"}
+    monkeypatch.setattr("benchos.flash._command", command)
+    monkeypatch.setattr("benchos.flash.shutil.which", lambda _: "arduino-cli")
+    monkeypatch.setattr("benchos.flash.verify_postflash", lambda *_: {"state": "unverified"})
+    result = build_dut_firmware(flash=True, harness=harness, ports_provider=lambda: ports,
+                                root=tmp_path, runs_dir=tmp_path / "runs")
+    assert result["upload"]["ok"] is True
+    assert flash_result_ok(result) is False
+    with SerialPortLock("/dev/dut", timeout_s=0):
+        pass
+
+
+def test_source_changed_during_compile_preserves_refusal_evidence(tmp_path, monkeypatch):
+    from pathlib import Path
+    import json
+    harness, ports = fixture(tmp_path)
+    def command(argv, log, _timeout):
+        assert argv[1] == "compile"
+        (Path(argv[argv.index("--build-path") + 1]) / "app.bin").write_bytes(b"app")
+        (tmp_path / "custom_design" / "custom_design.ino").write_text("changed")
+        return {"ok": True, "tail": "done"}
+    monkeypatch.setattr("benchos.flash._command", command)
+    monkeypatch.setattr("benchos.flash.shutil.which", lambda _: "arduino-cli")
+    result = build_dut_firmware(flash=True, harness=harness, ports_provider=lambda: ports,
+                                root=tmp_path, runs_dir=tmp_path / "runs")
+    recorded = json.loads((Path(result["run_dir"]) / "evidence.json").read_text())
+    assert recorded["upload"]["status"] == "refused_before_upload"

@@ -43,6 +43,20 @@ def describe_harness(path: Path = HARNESS_FILE) -> dict:
     ):
         raise ValueError("Connected bus monitor needs declared nets and inputs")
     telemetry_checks = data.get("telemetry_checks", [])
+    taps = data.get("digital_taps", {})
+    if not isinstance(taps, dict) or not set(taps) <= {"D1", "D2", "D3", "D4", "D5"}:
+        raise ValueError("Digital taps must be named D1–D5")
+    for name, tap in taps.items():
+        if not isinstance(tap, dict) or tap.get("state") not in PROBE_STATES:
+            raise ValueError(f"Invalid state for {name}")
+        if tap.get("gpio") != int(name[1:]) + 7:
+            raise ValueError(f"{name} GPIO must match the fixed S3 input firmware")
+        if not all(isinstance(tap.get(key), str) and tap[key].strip() for key in ("net", "endpoint")):
+            raise ValueError(f"{name} needs a declared net and physical endpoint")
+        if (isinstance(tap.get("series_resistor_ohm"), bool)
+                or not isinstance(tap.get("series_resistor_ohm"), int)
+                or not 1000 <= tap["series_resistor_ohm"] <= 10000):
+            raise ValueError(f"{name} needs a 1–10 kΩ series sense resistor")
     if not isinstance(telemetry_checks, list) or len(telemetry_checks) > 8:
         raise ValueError("telemetry_checks must be a list of at most eight rules")
     for rule in telemetry_checks:

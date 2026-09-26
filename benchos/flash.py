@@ -13,6 +13,9 @@ from pathlib import Path
 
 from .harness import describe_harness
 from .ports import available_ports
+from .protocol import BenchError
+from .serial_lock import SerialPortLock
+from .postflash import validate_postflash, verify_postflash
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FQBN_RE = re.compile(r"[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+(?::[A-Za-z0-9_,=.-]+)?\Z")
@@ -109,6 +112,7 @@ def build_dut_firmware(*, flash: bool = False, harness: dict | None = None,
     """
     ports_provider = available_ports if ports_provider is None else ports_provider
     harness = describe_harness() if harness is None else harness
+    postflash_spec = validate_postflash(harness.get("postflash"))
     plan = plan_dut_flash(harness, ports_provider(), root)
     sketch = (root.resolve() / plan["sketch_path"]).resolve()
     source_hash = _source_hash(sketch)
@@ -122,7 +126,7 @@ def build_dut_firmware(*, flash: bool = False, harness: dict | None = None,
               "run_dir": str(run_dir), "device": plan["device"], "usb_serial_number": plan["usb_serial_number"],
               "sketch_path": plan["sketch_path"], "fqbn": plan["fqbn"], "source_sha256": source_hash,
               "git": _git_state(root, plan["sketch_path"]),
-              "compile": None, "upload": None, "artifact_sha256": {},
+              "compile": None, "upload": None, "postflash": None, "artifact_sha256": {},
               "flashed_firmware_verified": False, "physical_circuit_verified": False}
     compile_argv = ["arduino-cli", "compile", "--config-file", str(CONFIG), "--fqbn", plan["fqbn"],
                     "--build-path", str(build_dir), str(sketch)]
@@ -136,19 +140,42 @@ def build_dut_firmware(*, flash: bool = False, harness: dict | None = None,
             result["compile"]["ok"] = False
             result["compile"]["tail"] += "\nNo compiled .bin artifact was produced."
     if flash and result["compile"]["ok"]:
-        if _source_hash(sketch) != source_hash:
-            raise ValueError("DUT source changed during compilation; upload refused")
-        # Port names may change during compilation. Re-resolve immediately
-        # before upload and reject loss or replacement of the enrolled board.
-        fresh = plan_dut_flash(harness, ports_provider(), root)
-        if (fresh["usb_serial_number"] != plan["usb_serial_number"]
-                or fresh["vid"] != plan["vid"] or fresh["pid"] != plan["pid"]):
-            raise ValueError("DUT USB identity changed before upload")
-        result["device"] = fresh["device"]
-        upload_argv = ["arduino-cli", "upload", "--config-file", str(CONFIG), "--fqbn", plan["fqbn"],
-                       "--input-dir", str(build_dir), "--port", fresh["device"], "--verify", str(sketch)]
-        result["upload"] = _command(upload_argv, run_dir / "upload.log", 180)
-        result["upload"]["status"] = ("reported_success" if result["upload"]["ok"]
-                                      else "uncertain_or_failed")
+        upload_started = False
+        try:
+            if _source_hash(sketch) != source_hash:
+                raise ValueError("DUT source changed during compilation; upload refused")
+            fresh = plan_dut_flash(harness, ports_provider(), root)
+            if any(fresh[key] != plan[key] for key in ("usb_serial_number", "vid", "pid")):
+                raise ValueError("DUT USB identity changed before upload")
+            result["device"] = fresh["device"]
+            upload_argv = ["arduino-cli", "upload", "--config-file", str(CONFIG), "--fqbn", plan["fqbn"],
+                           "--input-dir", str(build_dir), "--port", fresh["device"], "--verify", str(sketch)]
+            # Cooperate with dashboard/MCP readers for the whole upload. Check
+            # USB identity again after waiting for ownership of the port.
+            with SerialPortLock(fresh["device"], timeout_s=10):
+                locked = plan_dut_flash(harness, ports_provider(), root)
+                if any(locked[key] != fresh[key] for key in ("device", "usb_serial_number", "vid", "pid")):
+                    raise ValueError("DUT USB identity or port changed while waiting for upload lock")
+                upload_started = True
+                result["upload"] = _command(upload_argv, run_dir / "upload.log", 180)
+        except (BenchError, OSError, ValueError) as exc:
+            result["upload"] = {"ok": False, "status": "uncertain_or_failed" if upload_started
+                                else "refused_before_upload", "error": str(exc)}
+        if result["upload"].get("status") != "refused_before_upload":
+            result["upload"]["status"] = ("reported_success" if result["upload"]["ok"]
+                                          else "uncertain_or_failed")
+        # Persist upload evidence before any following observation can fail.
+        (run_dir / "evidence.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        if result["upload"]["ok"] and postflash_spec:
+            try:
+                result["postflash"] = verify_postflash(harness, postflash_spec, ports_provider)
+            except (BenchError, OSError, ValueError, KeyError) as exc:
+                result["postflash"] = {"state": "unverified", "error": str(exc)}
     (run_dir / "evidence.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
+
+
+def flash_result_ok(result: dict) -> bool:
+    """A requested postflash check must pass before reporting overall success."""
+    return bool(result["compile"]["ok"] and result.get("upload") and result["upload"]["ok"]
+                and (result.get("postflash") is None or result["postflash"].get("state") == "pass"))

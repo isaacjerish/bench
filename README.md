@@ -214,13 +214,24 @@ rechecks the DUT's USB identity immediately before a verified upload. The MCP
 server exposes `build_and_flash_dut` for the same declared target. Evidence
 includes source and binary hashes, Git state, bounded logs, and separate
 compile/upload outcomes. A successful upload does not prove running firmware
-identity or circuit behavior; check the boot stream and independent probes
-afterward. Automatic postflash electrical checks are still in development.
+identity or circuit behavior. Optional `postflash` settings now check an exact
+serial marker, fresh declared telemetry comparisons, and probe voltage targets
+after upload. A missing marker/field returns `unverified`, a mismatch returns
+`fail`, and CLI/MCP success requires all requested checks to pass. These
+automatic checks have host test coverage; the complete upload-to-postcheck
+sequence still needs a live run. A marker is a DUT claim, not binary attestation.
 
 The bus panel counts physical SDA/SCL transitions only when the declared
 3.3 V sense leads are connected. When a DUT port is selected, the dashboard
 keeps that serial stream open during the S3 capture so serial-dependent DUT
 loops remain active. Edge counts do not decode I²C addresses or ACKs.
+
+S3 v0.2 adds five fixed digital taps on IO8–IO12, with locations declared in
+`harness/current.yaml`. CLI `digital-taps --duration-ms 1000`, MCP
+`measure_digital_taps`, and dashboard “Sample bus” capture the inputs over
+overlapping windows and compare declared endpoints on the same net. Pending
+taps cannot contribute to a diagnosis. See [PERMANENT_TAPS.md](PERMANENT_TAPS.md)
+for the current wiring batch and hardware validation still needed.
 
 The visual direction draws on the [shadcn/ui dashboard examples](https://ui.shadcn.com/examples/dashboard),
 [Anthropic's frontend-design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md),
