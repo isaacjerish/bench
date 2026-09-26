@@ -47,11 +47,10 @@ probe point for later DUT tests.
 
 ## Install software
 
-Run from this directory. On this Mac the environment is already installed at
-`../../work/benchos-venv`; recreate it with:
+Run from this repository directory. Create a local virtual environment with:
 
 ```sh
-python3 -m venv ../../work/benchos-venv
+python3 -m venv .venv
 ./scripts/python.sh -m pip install -e '.[mcp,dev]'
 ```
 
@@ -60,12 +59,12 @@ and Espressif's Arduino core 3.x if absent. On the original Mac, an isolated
 Arduino CLI config exists at `scripts/arduino-cli.yaml`; its absolute paths are
 machine-specific and intentionally excluded from Git. On a fresh clone, copy
 `scripts/arduino-cli.example.yaml` to `scripts/arduino-cli.yaml` first. From
-the workspace root:
+this repository directory:
 
 ```sh
-arduino-cli core update-index --config-file outputs/benchos/scripts/arduino-cli.yaml
-arduino-cli core install esp32:esp32 --config-file outputs/benchos/scripts/arduino-cli.yaml
-arduino-cli board list --config-file outputs/benchos/scripts/arduino-cli.yaml
+arduino-cli core update-index --config-file scripts/arduino-cli.yaml
+arduino-cli core install esp32:esp32 --config-file scripts/arduino-cli.yaml
+arduino-cli board list --config-file scripts/arduino-cli.yaml
 ```
 
 ## Flash and test the S3
@@ -77,11 +76,11 @@ for `Serial` to answer over this board's native USB port. Use your specific
 FQBN if known, with USB serial enabled.
 
 ```sh
-arduino-cli compile --config-file outputs/benchos/scripts/arduino-cli.yaml --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc outputs/benchos/lab_controller
-arduino-cli upload --config-file outputs/benchos/scripts/arduino-cli.yaml --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc -p /dev/cu.usbmodemXXXX outputs/benchos/lab_controller
+arduino-cli compile --config-file scripts/arduino-cli.yaml --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc lab_controller
+arduino-cli upload --config-file scripts/arduino-cli.yaml --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc -p /dev/cu.usbmodemXXXX lab_controller
 ```
 
-After flashing, from `outputs/benchos`:
+After flashing, from this repository directory:
 
 ```sh
 ./scripts/python.sh -m benchos.cli list
@@ -106,12 +105,12 @@ already registered on this Mac. To recreate the registration, use absolute
 paths to the runtime and source directory:
 
 ```sh
-codex mcp add benchos --env PYTHONPATH="/ABS/PATH/outputs/benchos" -- "/ABS/PATH/work/benchos-venv/bin/python" -m mcp_server.server
+codex mcp add benchos --env PYTHONPATH="$(pwd)" -- "$(pwd)/.venv/bin/python" -m mcp_server.server
 codex mcp list
 ```
 
-Use the workspace root as `/ABS/PATH`. `PYTHONPATH` lets the server find this
-code from any working directory. Set `BENCHOS_PORT` with another `--env` flag
+`PYTHONPATH` lets the server find this code from any working directory. Set
+`BENCHOS_PORT` with another `--env` flag
 if several USB serial devices are connected. `BENCHOS_LOG` sets a JSONL file
 for MCP measurements. Restart the Codex task after registration so the tools appear.
 Ask: **“Use BenchOS to measure the voltage on P1.”**
@@ -169,11 +168,11 @@ state a 4.8–6 V operating range and up to about 2 A operating current; the
 describes its 5 V header as a board power connection.
 
 ```sh
-arduino-cli compile --config-file outputs/benchos/scripts/arduino-cli.yaml --fqbn esp32:esp32:esp32c6:CDCOnBoot=cdc outputs/benchos/dut_examples/servo_demo
-arduino-cli upload --config-file outputs/benchos/scripts/arduino-cli.yaml --fqbn esp32:esp32:esp32c6:CDCOnBoot=cdc -p /dev/cu.usbmodemYYYY outputs/benchos/dut_examples/servo_demo
+arduino-cli compile --config-file scripts/arduino-cli.yaml --fqbn esp32:esp32:esp32c6:CDCOnBoot=cdc dut_examples/servo_demo
+arduino-cli upload --config-file scripts/arduino-cli.yaml --fqbn esp32:esp32:esp32c6:CDCOnBoot=cdc -p /dev/cu.usbmodemYYYY dut_examples/servo_demo
 ```
 
-From `outputs/benchos` run:
+From this repository directory run:
 
 ```sh
 ./scripts/python.sh -m benchos.cli --log measurements.jsonl test physical_tests/servo_signal.yaml

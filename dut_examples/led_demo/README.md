@@ -18,14 +18,14 @@ The firmware's optional `pulse_us` diagnostic will report 0 for this slow
 blink because its 60 ms pulse timeout is tuned for servo pulses; the 2 Hz
 edge-count test is the relevant measurement here.
 
-From the workspace root, compile and upload with your detected C6 port:
+From the repository root, compile and upload with your detected C6 port:
 
 ```sh
-arduino-cli compile --config-file outputs/benchos/scripts/arduino-cli.yaml --fqbn esp32:esp32:esp32c6:CDCOnBoot=cdc outputs/benchos/dut_examples/led_demo
-arduino-cli upload --config-file outputs/benchos/scripts/arduino-cli.yaml --fqbn esp32:esp32:esp32c6:CDCOnBoot=cdc -p /dev/cu.usbmodemYYYY outputs/benchos/dut_examples/led_demo
+arduino-cli compile --config-file scripts/arduino-cli.yaml --fqbn esp32:esp32:esp32c6:CDCOnBoot=cdc dut_examples/led_demo
+arduino-cli upload --config-file scripts/arduino-cli.yaml --fqbn esp32:esp32:esp32c6:CDCOnBoot=cdc -p /dev/cu.usbmodemYYYY dut_examples/led_demo
 ```
 
-From `outputs/benchos`, run:
+From the repository root, run:
 
 ```sh
 ./scripts/python.sh -m benchos.cli test physical_tests/led_blink.yaml
