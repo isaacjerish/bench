@@ -7,6 +7,7 @@
     "still": "remotion still src/index.ts BenchyDemo out/benchy-demo.png"
   },
   "dependencies": {
+    "@remotion/cli": "^4.0.319",
     "@remotion/transitions": "^4.0.319",
     "remotion": "^4.0.319",
     "react": "^18.3.1",
