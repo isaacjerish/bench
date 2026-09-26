@@ -6,6 +6,7 @@ static constexpr uint8_t PWR_MGMT_1 = 0x6B;
 static constexpr uint8_t ACCEL_CONFIG = 0x1C;
 static constexpr uint8_t ACCEL_XOUT_H = 0x3B;
 static uint8_t imuAddress = 0;
+static uint8_t imuId = 0;
 
 bool readRegisters(uint8_t address, uint8_t reg, uint8_t *data, size_t length) {
   Wire.beginTransmission(address);
@@ -36,6 +37,7 @@ void setup() {
     uint8_t id = 0;
     if (readRegisters(address, WHO_AM_I, &id, 1)) {
       imuAddress = address;
+      imuId = id;
       Serial.printf("IMU_FOUND addr=0x%02X who_am_i=0x%02X\n", address, id);
       break;
     }
@@ -71,6 +73,6 @@ void loop() {
   const float ax = DEMO_FAULT == 1 ? 0.0f : x / 16384.0f;
   const float ay = DEMO_FAULT == 1 ? 0.0f : y / 16384.0f;
   const float az = DEMO_FAULT == 1 ? 1.0f : z / 16384.0f;
-  Serial.printf("IMU_ACCEL_G x=%.3f y=%.3f z=%.3f\n", ax, ay, az);
+  Serial.printf("IMU_ACCEL_G x=%.3f y=%.3f z=%.3f id=0x%02X\n", ax, ay, az, imuId);
   delay(IMU_REPORT_MS);
 }

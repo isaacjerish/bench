@@ -2,7 +2,8 @@
 
 The blue breakout in the supplied photos is marked `MPU-9250/6500/9255`.
 That is a family marking, not a confirmed chip ID. The serial log reports its
-I²C address and `WHO_AM_I` value before printing acceleration in g.
+I²C address and `WHO_AM_I` value, then includes the ID with every acceleration
+reading in g so the dashboard can identify it even after startup.
 
 With both boards disconnected from USB, wire the MPU breakout to the C6:
 

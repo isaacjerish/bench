@@ -1,18 +1,25 @@
 """Local stdio MCP tools backed by real ESP32-S3 serial measurements."""
 
 from typing import Any
+from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 
 from benchos import BenchClient
 from benchos.light import compare_light
+from benchos.checks import run_suite
+from benchos.dashboard import read_imu_report
 from benchos.protocol import BenchError
 
 mcp = MCPServer("benchos", instructions=(
     "These tools read physical circuits through the ESP32-S3. "
     "A firmware log is not evidence of physical output. "
-    "Never connect P1 to a signal outside 0–3.3 V."
+    "Never connect P1 to a signal outside 0–3.3 V. "
+    "The circuit must match the selected check profile; software cannot rewire it."
 ))
+
+PROFILES = {"rail_3v3", "ground", "led_blink", "servo_signal"}
+PROFILE_DIR = Path(__file__).resolve().parent.parent / "physical_tests"
 
 
 def _measure(method: str, *args, timeout: float = 3.0) -> dict[str, Any]:
@@ -59,6 +66,27 @@ def compare_light_sensor(dut_port: str) -> dict[str, Any]:
     try:
         with BenchClient(timeout=3.0) as client:
             return {"ok": True, **compare_light(client, dut_port)}
+    except (BenchError, OSError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool(structured_output=True)
+def check_circuit(profile: str) -> dict[str, Any]:
+    """Run a named physical pass/fail check: rail_3v3, ground, led_blink, or servo_signal."""
+    if profile not in PROFILES:
+        return {"ok": False, "error": "Unknown profile. Choose rail_3v3, ground, led_blink, or servo_signal."}
+    try:
+        with BenchClient(timeout=3.0) as client:
+            return {"ok": True, **run_suite(client, PROFILE_DIR / f"{profile}.yaml")}
+    except (BenchError, OSError, ValueError, TypeError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool(structured_output=True)
+def read_imu_stream(dut_port: str) -> dict[str, Any]:
+    """Read one C6 MPU acceleration report; this is a DUT claim, not independent physical proof."""
+    try:
+        return {"ok": True, "verified_by_probe": False, **read_imu_report(dut_port)}
     except (BenchError, OSError, ValueError) as exc:
         return {"ok": False, "error": str(exc)}
 

@@ -13,6 +13,8 @@ real hardware results. The key directories are:
 - `dut_examples/led_demo/`: tested 2 Hz visible LED demo.
 - `dut_examples/light_sensor_demo/`: photoresistor cross-check demo, currently flashed.
 - `dut_examples/imu_demo/`: new MPU-family I²C motion demo; wiring pending.
+- `benchos/dashboard.py` and `benchos/dashboard_ui/`: local dashboard and live
+  measurement view; start with `./scripts/python.sh -m benchos.dashboard`.
 - `physical_tests/`: YAML pass/fail checks.
 - `scripts/`: board detection, flashing, and test commands.
 - `tests/`: Python unit tests.
@@ -53,6 +55,13 @@ real hardware results. The key directories are:
   reported / 2.207 V physical PASS. With the sensor covered, C6 reported
   0.595 V while S3 measured 0.557 V, proving a real light response.
 - Python tests: run `./scripts/python.sh -m pytest -q` for the current count.
+- Local dashboard live light comparison passed with C6 2.255 V vs S3 2.191 V.
+  It remains available at `http://127.0.0.1:8765` while the local server runs;
+  reopen with the command in README if needed. The preview switch is sample
+  data, not a hardware result.
+- The S3 CLI worked while the dashboard was running using a shared serial lock.
+  MCP now has named `check_circuit` profiles and `read_imu_stream` (DUT claim
+  only until the I²C bus is physically probed).
 
 ## Fast commands on the original Mac
 

@@ -6,7 +6,7 @@ not mocked values.
 
 | Check | Result |
 |---|---|
-| Python host/MCP tests | 12 passed |
+| Python host/MCP/dashboard tests | 21 passed with local socket access |
 | S3 Arduino compile and flash | Passed, USB CDC enabled |
 | C6 Arduino compile and flash | Passed, GPIO20 output |
 | S3 USB serial `PING` | `OK PONG` |
@@ -28,6 +28,9 @@ not mocked values.
 | Photoresistor false-zero firmware fault | C6 reported 0.000 V; S3 measured 2.207 V; difference 2.207 V, FAIL as intended |
 | Photoresistor repaired C6/S3 agreement | C6 reported 2.261 V; S3 measured 2.207 V; difference 0.054 V, PASS |
 | Photoresistor covered response | User covered sensor; S3 voltage fell to 0.557 V, C6 reported 0.595 V; difference 0.038 V, PASS |
+| Local dashboard live light view | C6 reported 2.255 V; S3 measured 2.191 V; UI showed physical PASS |
+| CLI while dashboard runs | S3 measured 2.192 V; shared serial lock allowed both processes to use the port |
+| Dashboard preview fault | Clearly marked sample values 0.000 V vs 2.207 V showed FAIL; no hardware read represented as live |
 
 The resistor divider is nominally 1:2. These values show a working physical
 measurement loop, but the ADC and resistor tolerances do not make it a
@@ -43,3 +46,9 @@ node is connected to S3 P1. The earlier LED sketch is still available, but the
 LED/resistor branch and C6 GPIO20 wire have been removed for this test. The
 servo sketch remains in `dut_examples/servo_demo` and can be reflashed when a
 suitable servo power source is available.
+
+The MPU-family I²C sketch compiled for the C6, but the sensor has not yet been
+wired or physically validated. The web dashboard is running locally at
+`http://127.0.0.1:8765` on the original Mac; it follows the current light
+circuit. The new MCP `check_circuit` and `read_imu_stream` tools passed schema
+tests, but the IMU tool awaits a real connected sensor.

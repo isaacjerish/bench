@@ -114,6 +114,32 @@ codex mcp list
 if several USB serial devices are connected. `BENCHOS_LOG` sets a JSONL file
 for MCP measurements. Restart the Codex task after registration so the tools appear.
 Ask: **“Use BenchOS to measure the voltage on P1.”**
+The MCP server also exposes `check_circuit` for the four named physical test
+profiles and `read_imu_stream` for the C6 motion report. IMU serial values are
+labeled as DUT claims until the S3 independently observes the bus.
+
+## Local dashboard
+
+The dashboard shows the connected C6 circuit, the S3's independent physical
+reading, and a plain-language verdict. It covers the light sensor, LED, servo
+signal, and MPU demos. The amber **Preview data** switch uses clearly marked
+sample readings so you can inspect the page without hardware. Preview values
+are never reported as live measurements. The server listens on the Mac's
+loopback interface only and exposes no firmware-flashing endpoint.
+
+From this repository, start it with the current serial ports (detect them again
+if either board was unplugged):
+
+```sh
+./scripts/python.sh -m benchos.dashboard --lab-port /dev/cu.usbmodem1201 --dut-port /dev/cu.usbmodem1101
+```
+
+Open [http://127.0.0.1:8765](http://127.0.0.1:8765). You can also select the
+ports in the page. The dashboard releases the S3 serial port after each
+sample; BenchOS uses a short cross-process lock to share its serial ports with
+the Codex MCP server and CLI. The dashboard measures only the circuit
+currently wired to P1; switching the page's circuit tab does not rewire the
+hardware or change the C6 firmware.
 
 ## C6 servo demo
 

@@ -8,6 +8,7 @@ import time
 import serial
 
 from .protocol import BenchError, BenchProtocolError
+from .serial_lock import SerialPortLock
 
 LIGHT_LINE = re.compile(r"LIGHT_MV ([0-9]{1,5})\Z")
 
@@ -26,7 +27,7 @@ def read_light_report(port: str, timeout_s: float = 6.0) -> float:
     if not port:
         raise ValueError("A separate C6 --dut-port is required")
     try:
-        with serial.Serial(port, 115200, timeout=0.5, write_timeout=0.5) as dut:
+        with SerialPortLock(port), serial.Serial(port, 115200, timeout=0.5, write_timeout=0.5) as dut:
             deadline = time.monotonic() + timeout_s
             while time.monotonic() < deadline:
                 line = dut.readline().decode("ascii", errors="replace")

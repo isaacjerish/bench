@@ -12,6 +12,7 @@ import serial
 
 from . import config, ports
 from .protocol import BenchError, BenchProtocolError, parse_response, validate_probe
+from .serial_lock import SerialPortLock
 
 LOGGER = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class BenchClient:
         self.verbose = verbose
         self.log_path = log_path or config.configured_log()
         self._serial: serial.Serial | None = None
+        self._port_lock: SerialPortLock | None = None
         if verbose:
             logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -46,6 +48,8 @@ class BenchClient:
         failures: list[str] = []
         for candidate in candidates:
             try:
+                self._port_lock = SerialPortLock(candidate)
+                self._port_lock.acquire()
                 transport = serial.Serial(candidate, config.BAUD, timeout=self.timeout,
                                           write_timeout=self.timeout)
                 self._serial = transport
@@ -64,9 +68,14 @@ class BenchClient:
         raise BenchError("No BenchOS controller responded. " + "; ".join(failures))
 
     def close(self) -> None:
-        if self._serial:
-            self._serial.close()
-        self._serial = None
+        try:
+            if self._serial:
+                self._serial.close()
+        finally:
+            self._serial = None
+            if self._port_lock:
+                self._port_lock.release()
+            self._port_lock = None
 
     def _exchange(self, command: str) -> dict:
         if not self._serial or not self._serial.is_open:
