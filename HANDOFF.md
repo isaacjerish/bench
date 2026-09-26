@@ -12,6 +12,7 @@ real hardware results. The key directories are:
 - `dut_examples/servo_demo/`: ESP32-C6 servo PWM and three selectable faults.
 - `dut_examples/led_demo/`: tested 2 Hz visible LED demo.
 - `dut_examples/light_sensor_demo/`: photoresistor cross-check demo, currently flashed.
+- `dut_examples/imu_demo/`: new MPU-family I²C motion demo; wiring pending.
 - `physical_tests/`: YAML pass/fail checks.
 - `scripts/`: board detection, flashing, and test commands.
 - `tests/`: Python unit tests.
@@ -97,6 +98,8 @@ and are not included in Git.
 
 ## Remaining work
 
+0. Confirm C6 GPIO6/IO6 and GPIO7/IO7 are exposed; wire and validate the MPU
+   as described in `dut_examples/imu_demo/README.md`.
 1. Obtain and identify the separate 5 V servo supply.
 2. Disconnect the photoresistor circuit, wire SG90 yellow to C6 GPIO20/T, brown to the
    shared GND rail, red to the separate +5 V, and supply GND to the shared rail.

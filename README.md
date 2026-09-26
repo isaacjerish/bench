@@ -206,6 +206,14 @@ in the demo README. A difference test needs enough light to bring the sensor
 node above 0.3 V. This demo was physically validated: a false zero report
 failed against a real 2.207 V reading, and the repaired firmware passed.
 
+## MPU motion sensor
+
+The optional [MPU family demo](dut_examples/imu_demo/README.md) uses the blue
+`MPU-9250/6500/9255` board from the kit. It identifies the chip over I²C and
+reports live three-axis acceleration. Use only C6 3.3 V for its VCC; see its
+README for the exact wiring. The IMU can be added while the light sensor
+circuit remains in place.
+
 ## Limits and common failures
 
 - The ESP32 ADC is approximate, and resistor tolerance adds error. It is a
