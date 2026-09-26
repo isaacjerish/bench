@@ -36,6 +36,12 @@
   dashboard fixes. Corrected the voice wrapper to use the installed MCP SDK's
   `structured_content` and `is_error` attributes. Voice transport itself has
   not been exercised; it requires a configured xAI key and user-started audio.
+- Final merged regression gate: **110 Python tests and 9 Node UI tests pass**;
+  JavaScript syntax checks pass. The merged browser shows Offline correctly,
+  displays the dry/wet comparison, reads the current source, and has no browser
+  console errors. Voice is disabled with an explicit missing-key message on
+  this dashboard process. Last dashboard exec session: 31571; verify before
+  any later restart. No USB boards were detected at this final check.
 
 ## Active: ParcelGuard wiring checks pass (2026-09-26)
 
