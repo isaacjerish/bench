@@ -45,7 +45,8 @@ real hardware results. The key directories are:
 - LED firmware was restored after fault testing and remeasured at 2.0 Hz PASS.
 - Photoresistor cross-check: normal 2.274 V reported / 2.192 V physical PASS;
   false-zero 0.000 V reported / 2.207 V physical FAIL; repaired 2.261 V
-  reported / 2.207 V physical PASS.
+  reported / 2.207 V physical PASS. With the sensor covered, C6 reported
+  0.595 V while S3 measured 0.557 V, proving a real light response.
 - Python tests: run `./scripts/python.sh -m pytest -q` for the current count.
 
 ## Fast commands on the original Mac

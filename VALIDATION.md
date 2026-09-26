@@ -27,6 +27,7 @@ not mocked values.
 | Photoresistor normal C6/S3 agreement | C6 reported 2.274 V; S3 measured 2.192 V; difference 0.082 V, PASS |
 | Photoresistor false-zero firmware fault | C6 reported 0.000 V; S3 measured 2.207 V; difference 2.207 V, FAIL as intended |
 | Photoresistor repaired C6/S3 agreement | C6 reported 2.261 V; S3 measured 2.207 V; difference 0.054 V, PASS |
+| Photoresistor covered response | User covered sensor; S3 voltage fell to 0.557 V, C6 reported 0.595 V; difference 0.038 V, PASS |
 
 The resistor divider is nominally 1:2. These values show a working physical
 measurement loop, but the ADC and resistor tolerances do not make it a
