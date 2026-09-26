@@ -1,0 +1,9 @@
+name: servo_signal
+checks:
+  - type: frequency_range
+    probe: P1
+    minimum: 45
+    maximum: 55
+    duration_ms: 1000
+    pulse_min_us: 900
+    pulse_max_us: 2100

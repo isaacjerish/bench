@@ -1,0 +1,6 @@
+name: rail_3v3
+checks:
+  - type: voltage_range
+    probe: P1
+    minimum: 3.0
+    maximum: 3.6

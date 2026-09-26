@@ -1,0 +1,7 @@
+name: led_blink
+checks:
+  - type: frequency_range
+    probe: P1
+    minimum: 1.5
+    maximum: 2.5
+    duration_ms: 2000

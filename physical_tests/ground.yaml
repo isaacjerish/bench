@@ -1,0 +1,9 @@
+name: ground
+checks:
+  - type: voltage_range
+    probe: P1
+    minimum: 0.0
+    maximum: 0.15
+  - type: digital_state
+    probe: P1
+    expected: LOW
