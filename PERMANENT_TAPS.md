@@ -1,5 +1,12 @@
 # Permanent digital taps
 
+Latest hardware checkpoint: S3 v0.2 uploaded and verified; both SDA/SCL
+endpoint pairs show activity. D5 initially showed excessive transitions despite a DUT
+report of no alert; after reseating, it reads LOW with zero edges. Covered-light input triggered a C6 alert and eight
+D5 transitions in two seconds with DUT serial open. The user still sees a
+dark LED; the LED branch and standalone blink timing need checking. Raw results live in
+`validation_runs/2026-09-26-taps/`. All locations below are user declarations.
+
 ## Current setup and wiring batch
 
 Keep the existing MPU, light sensor, water sensor, LED, P1/P2/P3, shared ground,
@@ -12,9 +19,9 @@ to 5 V or unknown nodes; a series resistor does not provide level shifting.
 | --- | --- | --- | --- | --- |
 | D1 | IO8 | MPU-side SDA row | existing 10 kΩ | Previously connected and tested |
 | D2 | IO9 | MPU-side SCL row | existing 10 kΩ | Previously connected and tested |
-| D3 | IO10 | C6 IO5 source junction | new 6.8 kΩ | Awaiting wiring confirmation |
-| D4 | IO11 | C6 IO7 source junction | new 6.8 kΩ | Awaiting wiring confirmation |
-| D5 | IO12 | C6 IO20 before LED resistor | new 6.8 kΩ | Awaiting wiring confirmation |
+| D3 | IO10 | C6 IO5 source junction | new 6.8 kΩ | User reported connected |
+| D4 | IO11 | C6 IO7 source junction | new 6.8 kΩ | User reported connected |
+| D5 | IO12 | C6 IO20 before LED resistor | new 6.8 kΩ | Connected; idle LOW validated after reseating |
 
 For each new tap, use two unused, separate breadboard rows:
 
@@ -71,6 +78,12 @@ from the displayed measurements. Two declared endpoints on the same net are
 compared for activity at both, one, or neither endpoint. A difference suggests
 a check of the link and the two sensing branches; it does not locate a broken
 contact by itself.
+
+An optional `max_transitions_per_s` declaration checks an upper bound on
+CHANGE edges per second. For the current LED drive the bound is 8/s, allowing
+its intended 2 Hz blink (4 transitions/s) and boundary changes. This catches
+large excess activity without claiming a cause. It does not require blinking
+when an alert is active, and passing an upper bound cannot prove an LED works.
 
 ## Acceptance sequence after wiring
 

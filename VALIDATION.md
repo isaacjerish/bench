@@ -104,17 +104,45 @@ transitions on the restored SDA/SCL branches. The read-only bus monitor does
 not decode I²C traffic. Its capture should keep the DUT serial stream open
 for sketches that pause their I/O loop without a serial reader.
 
-## Permanent-tap software checkpoint (2026-09-26)
+## Permanent-tap checkpoint (2026-09-26, 19:30 UTC)
 
 - S3 v0.2 compiled for `esp32:esp32:esp32s3:CDCOnBoot=cdc`: 315,258 bytes
-  program, 23,336 bytes globals. The new IO8–IO12 capture is **not yet
-  uploaded or physically validated**. D3–D5 wiring confirmation is pending.
-- Host tests: 64 passed with local loopback access;
-  JS syntax and whitespace checks passed. Coverage includes malformed tap
-  responses, unconfirmed inputs, endpoint activity mismatch, missing telemetry
-  fields, upload locking, exact serial markers, and missing postflash evidence.
-- Dashboard inspected with both boards absent: no invented measurements,
-  new taps marked pending, and current local source visible. API is restarted
-  with `/api/taps`; live data requires the new S3 firmware and connected boards.
-- These checks establish software behavior and compilation only. The next
-  physical acceptance is the sequence in `PERMANENT_TAPS.md`.
+  program, 23,336 bytes globals. Uploaded to the enrolled S3 under the serial
+  lock; Arduino verified hashes and live `INFO`/`HELP` confirmed the new
+  protocol. The C6 sketch was unchanged.
+- After upload, physical readings were P1 2.457 V, P2 3.219 V, P3 0.000 V;
+  C6 reported light 2.522 V, water 0.020 V, healthy MPU, Z 1.086 g, no alert.
+- Simultaneous-overlap tap windows (small per-channel start/stop skew) showed
+  SDA D1/D3 counts 82/82, 86/86, and 86/85; SCL D2/D4 332/331, 332/332,
+  and 332/331. This validates activity observation at both declared ends.
+  It does not establish protocol decode or continuity.
+- Initial D5 anomaly: 6,015 / 10,714 / 9,981 CHANGE transitions in separate
+  ~2 s windows while DUT reports stayed `alert=0`. Rising-edge measurements
+  also showed excess activity and level samples varied HIGH/LOW. A floating
+  or misplaced LED sense branch was suspected; physical reseating was requested.
+- After the user checked/reseated that branch, D5 measured LOW, zero CHANGE
+  edges in 2 s, and 0 Hz. Bus pairs remained 81/81 SDA and 332/332 SCL.
+  Sensor readings P1 2.468 V, P2 3.199 V, P3 0.000 V still passed telemetry
+  checks. See `led-reseated.json`. The exact original bad contact is unknown.
+- Raw records are in `validation_runs/2026-09-26-taps/first-live.json` and
+  `led-repeat.json`. Applying the generic D5 upper bound of 8 transitions/s
+  to the saved repeat yields `fail` at 5,354.32 transitions/s. This saved
+  reassessment is not another hardware measurement.
+- Latest host suite: 67 passed, 1 sandbox socket test skipped. A previous
+  64-test run passed with loopback access. JS syntax/whitespace checks passed.
+- Dashboard inspected with boards absent: blank measurements and pending
+  declarations were shown correctly. Live five-input GUI behavior still
+  needs checking after the LED branch is resolved and the server restarted.
+- Whole-circuit acceptance, LED alert response, automatic postflash sequence,
+  and the new open-link comparison demonstration remain incomplete.
+
+### Covered light, LED still dark
+
+At 19:36 UTC, user reported an opaque cover and a dark LED. P1 was 0.316 V,
+C6 reported 0.355 V with `low_light=1, alert=1`, and D5 counted eight CHANGE
+transitions in two seconds while the DUT stream was open. Light reporting
+and output-node activity are observed; LED polarity/contacts/resistor/ground
+need checking. A separate frequency command without holding the DUT stream
+open measured 1 Hz, so steady standalone 2 Hz timing is not established.
+`pulse_us=0` cannot characterize a 250 ms pulse with the current 60 ms timeout.
+Full record: `validation_runs/2026-09-26-taps/light-covered.json`.

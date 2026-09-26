@@ -31,7 +31,7 @@ photo may help propose hypotheses, but electrical readings remain the proof.
 | C6 serial output and source view | Live MPU serial lines; local file hashes and Git revision | Reliable mapping from source/build to flashed binary; protocol-independent capture and parsing |
 | I²C observation | IO8/IO9 grounded and common-SCL checks passed; restored SDA/SCL counted 508/1,935 transitions in 2 s with C6 serial open | Timed capture and I²C address/ACK decode; better input protection |
 | DUT flashing | Generic build/flash CLI and MCP physically exercised; upload locking and optional marker/telemetry/range postchecks now implemented with host tests | Live acceptance of automatic postchecks; binary identity remains unverified |
-| Permanent digital taps | S3 IO8–IO12 v0.2 compiled; generic host/MCP/dashboard endpoint comparison implemented | Confirm three new 6.8 kΩ branches, upload S3, and validate all five inputs together |
+| Permanent digital taps | S3 v0.2 uploaded; both SDA/SCL endpoint pairs show activity; generic host/MCP/dashboard comparison implemented | D5 idle LOW recovered after reseating; validate LED alert response and open-link comparison |
 | Physical checks | Named fixed demo profiles | User-defined expectations tied to net names, design version, and measured evidence |
 | Active tests, current, 5 V, unknown nodes | None | Separate protected hardware; existing S3 inputs must not be repurposed as outputs |
 
@@ -89,7 +89,7 @@ the DUT serial stream held open. An SCL-open test showed sensor-side clock
 inactivity with VCC still present and a DUT communication error; restoring
 the jumper restored activity and motion reports. This is **not** an I²C
 decoder. Series resistors do not make an S3 input tolerant of 5 V or unknown
-voltages. The five-tap expansion needs its own live acceptance after wiring.
+voltages. The five-tap capture now observes activity at both SDA/SCL endpoints; its noisy D5 branch and open-link comparison still need validation.
 
 Next, investigate a bounded two-channel capture on the S3, using a peripheral
 such as RMT rather than relying on host USB timing. Decode START/STOP,
@@ -141,8 +141,8 @@ Unmapped nets and output-on-output connections are refused.
 
 1. USB identities were confirmed by chip type: S3 `94:A9:90:DB:BA:64`, C6
    `A0:85:E3:DA:BD:80`. The current `/dev/cu` ports are in `HANDOFF.md`.
-2. Await completion of the permanent tap batch; upload S3 v0.2 and compare
-   both ends of SDA/SCL over one capture window. Check the LED drive on D5.
+2. SDA/SCL endpoint activity is observed on S3 v0.2; D5 is now quiet after
+   reseating. Await covered-photoresistor confirmation and measure the alert.
 3. Keep P1/P2/P3 on their present nodes. Do not use the meter as an ongoing
    Benchy dependency; a reference meter is optional for calibrating future
    protected voltage ranges.

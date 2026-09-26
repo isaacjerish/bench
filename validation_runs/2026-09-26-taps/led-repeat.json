@@ -1,0 +1,264 @@
+{
+  "captures": [
+    {
+      "kind": "digital_taps",
+      "window_ms": 2001,
+      "edge_counts_approximate": true,
+      "capture_windows_overlap": true,
+      "decoded_transactions": false,
+      "taps": {
+        "D1": {
+          "start": "HIGH",
+          "end": "HIGH",
+          "edges": 86,
+          "declared_state": "connected",
+          "usable_for_diagnosis": true,
+          "declared_net": "MPU_SDA",
+          "endpoint": "MPU SDA row"
+        },
+        "D2": {
+          "start": "HIGH",
+          "end": "HIGH",
+          "edges": 332,
+          "declared_state": "connected",
+          "usable_for_diagnosis": true,
+          "declared_net": "MPU_SCL",
+          "endpoint": "MPU SCL row"
+        },
+        "D3": {
+          "start": "HIGH",
+          "end": "HIGH",
+          "edges": 86,
+          "declared_state": "connected",
+          "usable_for_diagnosis": true,
+          "declared_net": "MPU_SDA",
+          "endpoint": "C6 IO5 source junction"
+        },
+        "D4": {
+          "start": "HIGH",
+          "end": "HIGH",
+          "edges": 332,
+          "declared_state": "connected",
+          "usable_for_diagnosis": true,
+          "declared_net": "MPU_SCL",
+          "endpoint": "C6 IO7 source junction"
+        },
+        "D5": {
+          "start": "LOW",
+          "end": "LOW",
+          "edges": 10714,
+          "declared_state": "connected",
+          "usable_for_diagnosis": true,
+          "declared_net": "ALARM_DRIVE",
+          "endpoint": "C6 IO20 before LED resistor"
+        }
+      },
+      "comparisons": [
+        {
+          "net": "MPU_SDA",
+          "taps": [
+            "D1",
+            "D3"
+          ],
+          "continuity_verified": false,
+          "assessment": "activity_at_both",
+          "detail": "Both endpoints showed transitions; counts do not prove delivery of the same data or continuity."
+        },
+        {
+          "net": "MPU_SCL",
+          "taps": [
+            "D2",
+            "D4"
+          ],
+          "continuity_verified": false,
+          "assessment": "activity_at_both",
+          "detail": "Both endpoints showed transitions; counts do not prove delivery of the same data or continuity."
+        }
+      ],
+      "wiring_source": "user_declared",
+      "continuity_verified": false,
+      "limitations": "Approximate interrupt counts with overlapping windows and small start/stop skew; no waveform, edge correlation, or protocol decode.",
+      "timestamp": "2026-09-26T19:29:54.108383+00:00",
+      "source": "s3_physical",
+      "dut_stream_open_during_capture": true
+    },
+    {
+      "kind": "digital_taps",
+      "window_ms": 2001,
+      "edge_counts_approximate": true,
+      "capture_windows_overlap": true,
+      "decoded_transactions": false,
+      "taps": {
+        "D1": {
+          "start": "HIGH",
+          "end": "HIGH",
+          "edges": 86,
+          "declared_state": "connected",
+          "usable_for_diagnosis": true,
+          "declared_net": "MPU_SDA",
+          "endpoint": "MPU SDA row"
+        },
+        "D2": {
+          "start": "HIGH",
+          "end": "HIGH",
+          "edges": 332,
+          "declared_state": "connected",
+          "usable_for_diagnosis": true,
+          "declared_net": "MPU_SCL",
+          "endpoint": "MPU SCL row"
+        },
+        "D3": {
+          "start": "HIGH",
+          "end": "HIGH",
+          "edges": 85,
+          "declared_state": "connected",
+          "usable_for_diagnosis": true,
+          "declared_net": "MPU_SDA",
+          "endpoint": "C6 IO5 source junction"
+        },
+        "D4": {
+          "start": "HIGH",
+          "end": "HIGH",
+          "edges": 331,
+          "declared_state": "connected",
+          "usable_for_diagnosis": true,
+          "declared_net": "MPU_SCL",
+          "endpoint": "C6 IO7 source junction"
+        },
+        "D5": {
+          "start": "LOW",
+          "end": "LOW",
+          "edges": 9981,
+          "declared_state": "connected",
+          "usable_for_diagnosis": true,
+          "declared_net": "ALARM_DRIVE",
+          "endpoint": "C6 IO20 before LED resistor"
+        }
+      },
+      "comparisons": [
+        {
+          "net": "MPU_SDA",
+          "taps": [
+            "D1",
+            "D3"
+          ],
+          "continuity_verified": false,
+          "assessment": "activity_at_both",
+          "detail": "Both endpoints showed transitions; counts do not prove delivery of the same data or continuity."
+        },
+        {
+          "net": "MPU_SCL",
+          "taps": [
+            "D2",
+            "D4"
+          ],
+          "continuity_verified": false,
+          "assessment": "activity_at_both",
+          "detail": "Both endpoints showed transitions; counts do not prove delivery of the same data or continuity."
+        }
+      ],
+      "wiring_source": "user_declared",
+      "continuity_verified": false,
+      "limitations": "Approximate interrupt counts with overlapping windows and small start/stop skew; no waveform, edge correlation, or protocol decode.",
+      "timestamp": "2026-09-26T19:29:57.690755+00:00",
+      "source": "s3_physical",
+      "dut_stream_open_during_capture": true
+    }
+  ],
+  "D5_frequency": {
+    "kind": "frequency",
+    "probe": "D5",
+    "frequency_hz": 4953.5,
+    "edges": 9907,
+    "window_ms": 2000,
+    "pulse_us": 0
+  },
+  "D5_levels": [
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "HIGH",
+    "LOW",
+    "LOW",
+    "LOW",
+    "LOW",
+    "LOW",
+    "LOW",
+    "LOW",
+    "LOW",
+    "LOW",
+    "LOW",
+    "LOW",
+    "LOW",
+    "LOW",
+    "LOW"
+  ],
+  "serial": {
+    "port": "/dev/cu.usbmodem5",
+    "sample_window_ms": 1200,
+    "continuous": false,
+    "latest_seq": 8,
+    "events": [
+      {
+        "seq": 1,
+        "timestamp": "2026-09-26T19:29:51.486546+00:00",
+        "source": "serial_observed",
+        "line": "SENTINEL build=plant-sentinel-v1 light_mv=2527 water_mv=18 imu_ok=1 ax_g=-0.010 ay_g=0.017 az_g=1.088 imu_id=0x70 low_light=0 water_detected=0 tilted=0 alert=0 fault=0"
+      },
+      {
+        "seq": 2,
+        "timestamp": "2026-09-26T19:29:52.489420+00:00",
+        "source": "serial_observed",
+        "line": "SENTINEL build=plant-sentinel-v1 light_mv=2528 water_mv=10 imu_ok=1 ax_g=-0.011 ay_g=0.014 az_g=1.081 imu_id=0x70 low_light=0 water_detected=0 tilted=0 alert=0 fault=0"
+      },
+      {
+        "seq": 3,
+        "timestamp": "2026-09-26T19:29:53.486578+00:00",
+        "source": "serial_observed",
+        "line": "SENTINEL build=plant-sentinel-v1 light_mv=2530 water_mv=12 imu_ok=1 ax_g=-0.008 ay_g=0.014 az_g=1.089 imu_id=0x70 low_light=0 water_detected=0 tilted=0 alert=0 fault=0"
+      },
+      {
+        "seq": 4,
+        "timestamp": "2026-09-26T19:29:54.487018+00:00",
+        "source": "serial_observed",
+        "line": "SENTINEL build=plant-sentinel-v1 light_mv=2529 water_mv=20 imu_ok=1 ax_g=-0.008 ay_g=0.015 az_g=1.082 imu_id=0x70 low_light=0 water_detected=0 tilted=0 alert=0 fault=0"
+      },
+      {
+        "seq": 5,
+        "timestamp": "2026-09-26T19:29:55.486449+00:00",
+        "source": "serial_observed",
+        "line": "SENTINEL build=plant-sentinel-v1 light_mv=2526 water_mv=17 imu_ok=1 ax_g=-0.010 ay_g=0.014 az_g=1.087 imu_id=0x70 low_light=0 water_detected=0 tilted=0 alert=0 fault=0"
+      },
+      {
+        "seq": 6,
+        "timestamp": "2026-09-26T19:29:56.487009+00:00",
+        "source": "serial_observed",
+        "line": "SENTINEL build=plant-sentinel-v1 light_mv=2524 water_mv=11 imu_ok=1 ax_g=-0.008 ay_g=0.017 az_g=1.087 imu_id=0x70 low_light=0 water_detected=0 tilted=0 alert=0 fault=0"
+      },
+      {
+        "seq": 7,
+        "timestamp": "2026-09-26T19:29:57.486993+00:00",
+        "source": "serial_observed",
+        "line": "SENTINEL build=plant-sentinel-v1 light_mv=2521 water_mv=9 imu_ok=1 ax_g=-0.007 ay_g=0.014 az_g=1.086 imu_id=0x70 low_light=0 water_detected=0 tilted=0 alert=0 fault=0"
+      },
+      {
+        "seq": 8,
+        "timestamp": "2026-09-26T19:30:02.233920+00:00",
+        "source": "serial_observed",
+        "line": "SENTINEL build=plant-sentinel-v1 light_mv=2534 water_mv=17 imu_ok=1 ax_g=-0.007 ay_g=0.014 az_g=1.085 imu_id=0x70 low_light=0 water_detected=0 tilted=0 alert=0 fault=0"
+      }
+    ]
+  }
+}

@@ -1,0 +1,194 @@
+{
+  "timestamp": "2026-09-26T19:36:45.323862+00:00",
+  "user_observation": "Photoresistor covered; LED stays off",
+  "telemetry": {
+    "lab_port": "/dev/cu.usbmodem1101",
+    "dut_port": "/dev/cu.usbmodem5",
+    "physical": {
+      "simultaneous": false,
+      "elapsed_ms": 27.3,
+      "wiring_source": "user_declared",
+      "readings": [
+        {
+          "timestamp": "2026-09-26T19:36:48.735014+00:00",
+          "declared_state": "connected",
+          "declared_net": "LIGHT_SENSE",
+          "kind": "voltage",
+          "probe": "P1",
+          "voltage_v": 0.316,
+          "raw": 179,
+          "samples": 32
+        },
+        {
+          "timestamp": "2026-09-26T19:36:48.744063+00:00",
+          "declared_state": "connected",
+          "declared_net": "MPU_VCC",
+          "kind": "voltage",
+          "probe": "P2",
+          "voltage_v": 3.129,
+          "raw": 1839,
+          "samples": 32
+        },
+        {
+          "timestamp": "2026-09-26T19:36:48.761927+00:00",
+          "declared_state": "connected",
+          "declared_net": "WATER_SENSE",
+          "kind": "voltage",
+          "probe": "P3",
+          "voltage_v": 0.0,
+          "raw": 0,
+          "samples": 32
+        }
+      ],
+      "digital_states": {
+        "P1": "LOW",
+        "P2": "HIGH",
+        "P3": "LOW"
+      },
+      "timestamp": "2026-09-26T19:36:48.764649+00:00",
+      "source": "s3_physical",
+      "voltage_limit_v": 3.3
+    },
+    "serial_window_ms": 1200,
+    "state": "pass",
+    "source": "s3_physical_plus_dut_serial",
+    "checks": [
+      {
+        "probe": "P1",
+        "field": "light_mv",
+        "declared_net": "LIGHT_SENSE",
+        "physical_v": 0.316,
+        "dut_claim_v": 0.355,
+        "delta_v": 0.039,
+        "max_delta_v": 0.45,
+        "sample_age_s": 2.439,
+        "serial_timestamp": "2026-09-26T19:36:46.295830+00:00",
+        "pass": true
+      },
+      {
+        "probe": "P3",
+        "field": "water_mv",
+        "declared_net": "WATER_SENSE",
+        "physical_v": 0.0,
+        "dut_claim_v": 0.014,
+        "delta_v": 0.014,
+        "max_delta_v": 0.45,
+        "sample_age_s": 2.466,
+        "serial_timestamp": "2026-09-26T19:36:46.295830+00:00",
+        "pass": true
+      }
+    ],
+    "missing_checks": [],
+    "expected_checks": 2,
+    "serial_lines": [
+      "SENTINEL build=plant-sentinel-v1 light_mv=355 water_mv=14 imu_ok=1 ax_g=-0.007 ay_g=0.017 az_g=1.087 imu_id=0x70 low_light=1 water_detected=0 tilted=0 alert=1 fault=0"
+    ],
+    "scope": "Only declared probe nodes and fields; serial contents are DUT claims."
+  },
+  "capture": {
+    "kind": "digital_taps",
+    "window_ms": 2000,
+    "edge_counts_approximate": true,
+    "capture_windows_overlap": true,
+    "decoded_transactions": false,
+    "taps": {
+      "D1": {
+        "start": "HIGH",
+        "end": "HIGH",
+        "edges": 87,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "MPU_SDA",
+        "endpoint": "MPU SDA row"
+      },
+      "D2": {
+        "start": "HIGH",
+        "end": "HIGH",
+        "edges": 332,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "MPU_SCL",
+        "endpoint": "MPU SCL row"
+      },
+      "D3": {
+        "start": "HIGH",
+        "end": "HIGH",
+        "edges": 87,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "MPU_SDA",
+        "endpoint": "C6 IO5 source junction"
+      },
+      "D4": {
+        "start": "HIGH",
+        "end": "HIGH",
+        "edges": 331,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "MPU_SCL",
+        "endpoint": "C6 IO7 source junction"
+      },
+      "D5": {
+        "start": "LOW",
+        "end": "LOW",
+        "edges": 8,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "ALARM_DRIVE",
+        "endpoint": "C6 IO20 before LED resistor"
+      }
+    },
+    "comparisons": [
+      {
+        "net": "MPU_SDA",
+        "taps": [
+          "D1",
+          "D3"
+        ],
+        "continuity_verified": false,
+        "assessment": "activity_at_both",
+        "detail": "Both endpoints showed transitions; counts do not prove delivery of the same data or continuity."
+      },
+      {
+        "net": "MPU_SCL",
+        "taps": [
+          "D2",
+          "D4"
+        ],
+        "continuity_verified": false,
+        "assessment": "activity_at_both",
+        "detail": "Both endpoints showed transitions; counts do not prove delivery of the same data or continuity."
+      }
+    ],
+    "expectations": [
+      {
+        "tap": "D5",
+        "net": "ALARM_DRIVE",
+        "max_transitions_per_s": 8,
+        "scope": "Upper bound on observed transitions only; does not prove the load works.",
+        "state": "pass",
+        "observed_transitions_per_s": 4.0,
+        "detail": "Observed approximately 4.00 transitions/s; declared upper bound 8/s. Check the signal and sense branch if exceeded."
+      }
+    ],
+    "wiring_source": "user_declared",
+    "continuity_verified": false,
+    "limitations": "Approximate interrupt counts with overlapping windows and small start/stop skew; no waveform, edge correlation, or protocol decode.",
+    "timestamp": "2026-09-26T19:36:54.920462+00:00",
+    "source": "s3_physical",
+    "dut_stream_open_during_capture": true
+  },
+  "led_frequency": {
+    "kind": "frequency",
+    "probe": "D5",
+    "frequency_hz": 1.0,
+    "edges": 2,
+    "window_ms": 2000,
+    "pulse_us": 0
+  },
+  "led_level": {
+    "kind": "digital",
+    "probe": "D5",
+    "state": "HIGH"
+  }
+}

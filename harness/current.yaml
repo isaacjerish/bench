@@ -52,9 +52,9 @@ probes:
 digital_taps:
   D1: {state: connected, net: MPU_SDA, endpoint: MPU SDA row, gpio: 8, series_resistor_ohm: 10000}
   D2: {state: connected, net: MPU_SCL, endpoint: MPU SCL row, gpio: 9, series_resistor_ohm: 10000}
-  D3: {state: pending, net: MPU_SDA, endpoint: C6 IO5 source junction, gpio: 10, series_resistor_ohm: 6800}
-  D4: {state: pending, net: MPU_SCL, endpoint: C6 IO7 source junction, gpio: 11, series_resistor_ohm: 6800}
-  D5: {state: pending, net: ALARM_DRIVE, endpoint: C6 IO20 before LED resistor, gpio: 12, series_resistor_ohm: 6800}
+  D3: {state: connected, net: MPU_SDA, endpoint: C6 IO5 source junction, gpio: 10, series_resistor_ohm: 6800}
+  D4: {state: connected, net: MPU_SCL, endpoint: C6 IO7 source junction, gpio: 11, series_resistor_ohm: 6800}
+  D5: {state: connected, net: ALARM_DRIVE, endpoint: C6 IO20 before LED resistor, gpio: 12, series_resistor_ohm: 6800, max_transitions_per_s: 8}
 bus_monitor:
   state: connected
   sda_net: MPU_SDA

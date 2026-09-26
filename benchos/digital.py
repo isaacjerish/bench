@@ -30,6 +30,22 @@ def describe_capture(raw: dict, declared: dict) -> dict:
             else:
                 item.update(assessment="static", detail="No transitions observed at either endpoint. Idle traffic, a held line, or missed activity remain possible.")
         comparisons.append(item)
-    return {**raw, "taps": taps, "comparisons": comparisons, "wiring_source": "user_declared",
+    expectations = []
+    for name, location in declared.items():
+        maximum = location.get("max_transitions_per_s")
+        if maximum is None:
+            continue
+        item = {"tap": name, "net": location["net"], "max_transitions_per_s": maximum,
+                "scope": "Upper bound on observed transitions only; does not prove the load works."}
+        if name not in taps or not taps[name]["usable_for_diagnosis"] or not raw.get("window_ms"):
+            item.update(state="unverified", detail="No usable capture for this declared input.")
+        else:
+            rate = taps[name]["edges"] * 1000 / raw["window_ms"]
+            item.update(state="pass" if rate <= maximum else "fail",
+                        observed_transitions_per_s=round(rate, 2),
+                        detail=f"Observed approximately {rate:.2f} transitions/s; declared upper bound {maximum:g}/s. Check the signal and sense branch if exceeded.")
+        expectations.append(item)
+    return {**raw, "taps": taps, "comparisons": comparisons, "expectations": expectations,
+            "wiring_source": "user_declared",
             "continuity_verified": False,
             "limitations": "Approximate interrupt counts with overlapping windows and small start/stop skew; no waveform, edge correlation, or protocol decode."}

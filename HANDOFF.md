@@ -1,39 +1,78 @@
 # Benchy handoff
 
-## Latest checkpoint: permanent taps (2026-09-26)
+## Active direction: clean ParcelGuard rebuild
 
-- The user is adding three **6.8 kΩ** branches: C6 IO5 source junction to
-  S3 IO10, C6 IO7 source junction to S3 IO11, and C6 IO20 before the existing
-  LED resistor to S3 IO12. Preserve all earlier probes and sensor wiring.
-  `PERMANENT_TAPS.md` contains the full batch; D3/D4/D5 remain `pending`
-  until the user confirms completion. Existing D1/D2 remain on MPU-side rows.
-- S3 v0.2 compiled successfully (315,258 bytes program; 23,336 bytes globals)
-  with input-only IO8–IO12 capture. **This build has not yet been uploaded or
-  physically validated.** The compiled output is in the original workspace's
-  `work/s3-digital-taps`; recompile if source changes before upload.
-- Host parser/client, CLI `digital-taps`, and MCP `measure_digital_taps`
-  support five overlapping-window counts, individual digital/frequency reads,
-  and declared endpoint comparisons. Pending inputs cannot produce a diagnosis.
-- Dashboard `/api/taps` drains DUT serial during capture and shows generic
-  tap locations/status/counts. An endpoint activity mismatch cannot be hidden
-  by an otherwise passing analog telemetry comparison. Page inspected with
-  boards absent: D3/D4/D5 display pending and all measurements remain blank.
-- Telemetry checks now require **every** declared field to be fresh and valid;
-  fields may appear on separate serial lines. New malformed values cannot
-  fall back to an earlier good report.
-- DUT upload holds the serial lock, rechecks USB identity after acquiring it,
-  preserves refusal/failure evidence, and optionally checks a serial marker,
-  telemetry, and voltage targets. Harness specifies `build=plant-sentinel-v1`.
-  These postflash additions have unit tests but still need one live
-  upload-to-observation run. Serial markers do not attest the running binary.
-- Latest host run: 64 passed with local loopback access; JavaScript syntax
-  and Git whitespace checks passed. The local dashboard was restarted with
-  the new endpoint at `http://127.0.0.1:8765/`; check its process before reuse.
-- Next hardware action: after “three taps wired,” rediscover USB identities,
-  upload S3 v0.2 while holding its port lock, confirm `INFO`/`HELP`, check
-  P1/P2/P3 and current C6 telemetry, then capture D1–D5. No new C6 flash is
-  required for the tap expansion. Trigger an alert and measure D5 only after
-  the baseline passes. Do not count pending wiring or compilation as evidence.
+User requested a clean, simpler test project for a quick friends demo, with
+Benchy permanently observing every used DUT GPIO. Stop the earlier LED repair
+sequence; the historical observations below remain useful evidence.
+
+New project: light intrusion + water leak → blinking LED alarm. C6 uses only
+IO1 (light), IO2 (water), IO20 (LED). Wiring is in `PARCEL_GUARD_SETUP.md`.
+Each signal branches through a 6.8 kΩ resistor into a sense row shared by an
+S3 ADC and a digital input: P1 IO1/IO8, P2 IO4/IO9, P3 IO6/IO10. These are
+known 0–3.3 V nodes with no ADC divider. Existing firmware/manifest still
+describe the prior circuit. **Do not measure the rebuilt circuit under the
+old mapping or scale.** Await “ParcelGuard wired”; meanwhile prepare a named
+S3 series-tap profile (ADC scale 1), C6 `parcel_guard` sketch, and its harness
+with all new connections pending until confirmed. Keep the old profile and
+historical evidence. No Git history reset/rebase is requested.
+
+## Latest checkpoint: permanent taps (2026-09-26, 19:35 UTC)
+
+- User reported completing three **6.8 kΩ** branches: C6 IO5 source junction
+  to S3 IO10, C6 IO7 source junction to S3 IO11, and C6 IO20 before the LED
+  resistor to S3 IO12. All are declared connected; declarations are not
+  automatic connectivity verification. Full wiring: `PERMANENT_TAPS.md`.
+- S3 v0.2 compiled and uploaded to USB serial `94:A9:90:DB:BA:64` while
+  holding its port lock. Arduino verified flash hashes; live `INFO` says
+  v0.2 and `HELP` lists `MEASURE_TAPS`. C6 firmware was not changed.
+- After upload: P1 2.457 V, P2 3.219 V, P3 0.000 V. C6 light 2.522 V and
+  water 0.020 V both match their independent probes within 0.45 V. C6
+  reports MPU healthy, Z 1.086 g, `alert=0`, `fault=0`.
+- New bus endpoint taps show activity in the same 2 s window: SDA D1/D3
+  82/82 edges; SCL D2/D4 332/331. Repeated SDA 86/86 and 86/85, SCL
+  332/332 and 332/331. This supports working observations at both ends;
+  approximate counts do not prove matching transactions or continuity.
+- **LED tap reseating resolved the excess activity.** Before reseating,
+  D5 counted 6,015 / 10,714 / 9,981 CHANGE edges in ~2 s while C6 reported
+  no alert. After the user checked the C6 IO20 → 6.8 kΩ → S3 IO12 branch,
+  D5 measured LOW, zero edges, and 0 Hz; SDA was 81/81 and SCL 332/332 at
+  the two endpoints. P1 2.468 V, P2 3.199 V, P3 0.000 V; telemetry passed.
+  This supports a corrected sense connection, without identifying the exact
+  original bad contact. Saved after-check: `led-reseated.json`.
+- Covered-light test: P1 fell to 0.316 V; C6 reported 0.355 V,
+  `low_light=1`, `alert=1`. D5 counted eight CHANGE edges in 2 s with DUT
+  serial held open. **User reports LED still dark.** User was asked to
+  unplug both boards, check LED polarity (long leg/anode toward the
+  220–330 Ω resistor, short leg/flat side to shared GND), ensure legs occupy
+  separate connected groups and correct resistor value, then reconnect with
+  light still covered and report whether it flashes. Await that reply.
+- A separate D5 frequency window without explicitly holding DUT serial open
+  read 1 Hz (two rising edges in 2 s), so consistent standalone 2 Hz timing
+  is not yet proved. The covered-light record contains both results. Keep
+  the DUT stream open for the next comparison and investigate before
+  declaring precise timing validated. `pulse_us=0` at this slow rate is
+  inconclusive because the firmware's pulse timeout is only 60 ms.
+- Saved raw hardware evidence: `validation_runs/2026-09-26-taps/`.
+  `reassessed-led-repeat.json` applies the new generic declared transition
+  bound to a saved capture; it is not an additional live sample.
+- Dashboard `/api/taps`, CLI `digital-taps`, and MCP `measure_digital_taps`
+  support five counts, endpoint comparisons, and optional
+  `max_transitions_per_s` targets. D5's 8/s upper bound catches the excessive
+  activity. This is only an upper bound; idle LOW passing it does not prove
+  the LED works. GUI net names and expectations come from the harness.
+- Host telemetry checks require every declared field, allow separate serial
+  lines, and reject stale/malformed newest values. Upload now holds a serial
+  lock and rechecks identity afterward. Optional postflash marker, telemetry,
+  and voltage targets are implemented with tests, but the complete automatic
+  upload-to-postcheck sequence remains unvalidated on hardware.
+- Latest host run: 67 passed, 1 sandbox socket test skipped. The preceding
+  64-test suite passed with loopback access. JS syntax and whitespace checks
+  passed. Firmware program size: 315,258 bytes; globals: 23,336 bytes.
+- Software checkpoint `5000912` was pushed to GitHub before the live tests.
+  Resume by reading current Git state and these saved results. The dashboard
+  was restarted after flashing at `http://127.0.0.1:8765/`; check its process
+  before reuse.
 
 ## Where the code is
 

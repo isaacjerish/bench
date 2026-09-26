@@ -134,6 +134,9 @@ function evaluate(sample) {
     next:'Check ADC scaling, selected pin, and report logic. Repeat with a controlled change at the sensor.'};
   const busIsFresh = latestBus && !preview && Math.abs(Date.parse(latestBus.timestamp) - Date.parse(sample.timestamp)) < 15000;
   const tapsAreFresh = latestTaps && !preview && Math.abs(Date.parse(latestTaps.timestamp) - Date.parse(sample.timestamp)) < 15000;
+  const tapTargetMissed = tapsAreFresh && (latestTaps.expectations || []).find(item => item.state === 'fail');
+  if (tapTargetMissed) return {state:'fail', label:'DIGITAL TARGET MISSED', title:tapTargetMissed.net + ' has unexpected activity.',
+    detail:tapTargetMissed.detail, next:'Check the declared signal node and the sense branch, then capture again. This observation alone does not identify a faulty component.'};
   const endpointMismatch = tapsAreFresh && latestTaps.comparisons.find(item => item.assessment === 'activity_mismatch');
   if (endpointMismatch) return {state:'unknown', label:'ENDPOINT ACTIVITY DIFFERS', title:endpointMismatch.net + ' needs a closer look.',
     detail:endpointMismatch.detail, next:'Check the declared connection and both probe branches. Repeat during sustained traffic; edge counts cannot identify the exact broken contact.'};
@@ -289,6 +292,11 @@ function renderTaps(sample) {
   for (const item of sample && sample.comparisons || []) {
     const row = document.createElement('p');
     const label = document.createElement('strong'); label.textContent = item.net + ' · ' + item.taps.join(' / ') + ': ';
+    row.append(label, document.createTextNode(item.detail)); comparisons.append(row);
+  }
+  for (const item of sample && sample.expectations || []) {
+    const row = document.createElement('p');
+    const label = document.createElement('strong'); label.textContent = item.tap + ' · ' + item.state.toUpperCase() + ': ';
     row.append(label, document.createTextNode(item.detail)); comparisons.append(row);
   }
   setText('digital-tap-status', sample

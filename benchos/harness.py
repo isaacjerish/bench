@@ -57,6 +57,10 @@ def describe_harness(path: Path = HARNESS_FILE) -> dict:
                 or not isinstance(tap.get("series_resistor_ohm"), int)
                 or not 1000 <= tap["series_resistor_ohm"] <= 10000):
             raise ValueError(f"{name} needs a 1–10 kΩ series sense resistor")
+        maximum = tap.get("max_transitions_per_s")
+        if maximum is not None and (isinstance(maximum, bool) or not isinstance(maximum, (int, float))
+                                    or not math.isfinite(maximum) or not 0 <= maximum <= 10000000):
+            raise ValueError(f"{name} transition upper bound must be a finite nonnegative number")
     if not isinstance(telemetry_checks, list) or len(telemetry_checks) > 8:
         raise ValueError("telemetry_checks must be a list of at most eight rules")
     for rule in telemetry_checks:

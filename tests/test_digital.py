@@ -27,3 +27,14 @@ def test_floating_unconfirmed_inputs_cannot_create_fault_or_pass(state):
     assert result["comparisons"][0]["assessment"] == "unverified"
     assert result["taps"]["D3"]["usable_for_diagnosis"] is False
     assert result["taps"]["D3"]["declared_net"] is None
+
+
+@pytest.mark.parametrize("state,edges,expected", [
+    ("connected", 0, "pass"), ("connected", 8, "pass"),
+    ("connected", 10000, "fail"), ("pending", 10000, "unverified")])
+def test_declared_transition_limit_flags_noise_without_assuming_a_cause(state, edges, expected):
+    raw = {"window_ms": 2000, "taps": {"D5": {"start": "LOW", "end": "LOW", "edges": edges}}}
+    declared = {"D5": {"state": state, "net": "OUTPUT", "endpoint": "source", "max_transitions_per_s": 8}}
+    result = describe_capture(raw, declared)
+    assert result["expectations"][0]["state"] == expected
+    assert "does not prove" in result["expectations"][0]["scope"]
