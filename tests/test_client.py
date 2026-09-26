@@ -53,6 +53,22 @@ def test_mismatched_probe_cannot_be_misattributed(monkeypatch):
             client.read_digital("P1")
 
 
+def test_voltage_pair_has_order_and_reports_non_simultaneity(monkeypatch):
+    FakeSerial.replies = [b"OK PONG\n",
+                          b"OK VOLTAGE P1 3.250 RAW 2010 SAMPLES 32\n",
+                          b"OK VOLTAGE P2 0.025 RAW 18 SAMPLES 32\n"]
+    FakeSerial.instances = []
+    monkeypatch.setattr("benchos.client.serial.Serial", FakeSerial)
+    with BenchClient("/dev/fake", startup_delay=0) as client:
+        result = client.measure_voltage_pair()
+    assert result["simultaneous"] is False
+    assert [item["probe"] for item in result["readings"]] == ["P1", "P2"]
+    assert [item["declared_net"] for item in result["readings"]] == ["LIGHT_SENSE", "MPU_VCC"]
+    assert result["wiring_source"] == "user_declared"
+    assert [item["voltage_v"] for item in result["readings"]] == [3.25, 0.025]
+    assert FakeSerial.instances[0].writes == [b"PING\n", b"READ_ADC P1\n", b"READ_ADC P2\n"]
+
+
 def test_auto_discovery_rescans_after_connection_loss(monkeypatch):
     from benchos.protocol import BenchError
 

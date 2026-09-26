@@ -1,8 +1,9 @@
-# BenchOS handoff
+# Benchy handoff
 
 ## Where the code is
 
-This repository is the complete BenchOS project. Start with `README.md` for
+This repository is the complete Benchy project. The Python package remains
+`benchos` for compatibility. Start with `README.md` for
 wiring and setup, `AGENT_DEMO.md` for the judging demo, and `VALIDATION.md` for
 real hardware results. The key directories are:
 
@@ -11,8 +12,9 @@ real hardware results. The key directories are:
 - `mcp_server/`: local Codex MCP tools backed by the S3.
 - `dut_examples/servo_demo/`: ESP32-C6 servo PWM and three selectable faults.
 - `dut_examples/led_demo/`: tested 2 Hz visible LED demo.
-- `dut_examples/light_sensor_demo/`: photoresistor cross-check demo, currently flashed.
-- `dut_examples/imu_demo/`: new MPU-family I²C motion demo; wiring pending.
+- `dut_examples/light_sensor_demo/`: photoresistor cross-check demo, available to reflash.
+- `dut_examples/imu_demo/`: currently flashed MPU-family I²C motion demo.
+- `harness/current.yaml`: user-declared live wiring map; update after any wire move.
 - `benchos/dashboard.py` and `benchos/dashboard_ui/`: local dashboard and live
   measurement view with four overhead breadboard scenes; start with
   `./scripts/python.sh -m benchos.dashboard`. The scenes are illustrative;
@@ -27,6 +29,10 @@ real hardware results. The key directories are:
 - C6 DUT: `/dev/cu.usbmodem1101` on the original Mac. These port names can change.
 - S3 GPIO1 measures divider midpoint M. Two 10 kΩ resistors connect test row T
   to M to GND. S3 GPIO2 directly observes T. S3 and C6 GND share a rail.
+- A second input probe P2 is wired on separate rows U (tip) and N (midpoint):
+  `U --10 kΩ-- N --10 kΩ-- shared GND`, S3 IO4 to N, S3 IO5 directly to U.
+  U is currently attached to the sensor-side MPU VCC pin/row. Do not confuse
+  S3 IO5 with C6 IO5, which carries MPU SDA. Both probes are 0–3.3 V only.
 - C6 GPIO20 and the LED/resistor branch have been removed from T. A
   photoresistor connects C6 3V3 to T; a separate 10 kΩ resistor connects T to
   shared GND; C6 GPIO1 also measures T. The S3 P1 divider remains in place.
@@ -74,11 +80,30 @@ real hardware results. The key directories are:
 - The S3 CLI worked while the dashboard was running using a shared serial lock.
   MCP now has named `check_circuit` profiles and `read_imu_stream` (DUT claim
   only until the I²C bus is physically probed).
+- S3 firmware now reports two probes. P2 read 3.265 V/HIGH on S3 3V3 and
+  0.002 V/LOW on GND; the independent `imu_vcc` profile then passed at
+  3.231 V/HIGH on the MPU VCC connection. P1 remained near 2.16 V on the light
+  node during the P2 tests. `pair-voltage` / `measure_voltage_pair` read the
+  channels in order with timestamps; they are not simultaneous samples.
+- `harness/current.yaml` records user-declared connections, and the CLI/MCP
+  `harness` / `describe_harness` tools expose them. The `imu_vcc` profile
+  requires P2 to be declared connected to `MPU_VCC` before running. A declaration is not a
+  physical measurement. The dashboard Motion view now combines S3 P2 supply
+  evidence with the C6 motion stream without calling the bus independently
+  verified.
+- Deliberately opening only the C6 IO7 → MPU SCL wire left P2's `imu_vcc`
+  check passing at 3.228 V/HIGH while the C6 reported
+  `IMU_ERROR no_device_at_0x68_or_0x69`. The combined diagnosis was
+  **“Power present; IMU link failed”**; it did not claim which bus wire was
+  wrong. After SCL was restored, P2 passed at 3.246 V/HIGH and the C6 again
+  reported a plausible 1.096 g acceleration magnitude. The C6 firmware now
+  retries discovery after a sensor read failure; retry behavior was compiled
+  and flashed, while the observed recovery included a USB reconnect.
 
-## What BenchOS can diagnose today
+## What Benchy can diagnose today
 
-BenchOS has **one physical test point, P1**, with an approximate 0–3.3 V ADC
-measurement, an instantaneous HIGH/LOW read, a rising-edge frequency count,
+Benchy has **two physical test points, P1 and P2**, each with an approximate
+0–3.3 V ADC measurement, an instantaneous HIGH/LOW read, a rising-edge frequency count,
 and one high-pulse-width measurement. The agent can run named rail, ground,
 LED, and servo-signal pass/fail checks and compare a C6 light-sensor claim
 against S3's independent measurement. This is a working electrical-debugging
@@ -92,14 +117,17 @@ MVP for known nodes, not an automatic scan of a breadboard.
 | C6 light reading says 0 V, but S3 sees about 2.2 V | The reported sensor value disagrees with the physical node | Inspect C6 ADC pin/configuration and report path |
 | P1 reads about 3.26 V on a 3V3 rail or 0 V on GND | The probed rail/node passes its configured voltage check | This does not measure current, ripple, or behavior under servo load |
 
-The wrong-pin, stuck-low, wrong-frequency, false-zero light reading, and
+The wrong-pin, stuck-low, wrong-frequency, false-zero light reading, power-present
+SCL-open link fault, and
 repaired cases above were physically demonstrated; see `VALIDATION.md` for
 recorded measurements. A zero-edge reading alone does not identify a unique
 root cause. BenchOS cannot yet map unknown wiring, capture/decode I²C, inspect
 multiple nodes simultaneously, measure current or 5 V directly, or confirm
 SG90 shaft movement. `read_imu_stream` is a C6 report, not independent S3
 confirmation of the I²C lines. The P1 ADC is approximate,
-and P1 must never touch a node above 3.3 V.
+and neither probe must touch a node above 3.3 V. The 10 kΩ/10 kΩ divider
+loads a probed net; do not attach it to SDA/SCL without checking the bus
+pullups. It is not a high-impedance logic-analyzer front end.
 
 ## Current MPU wiring and validation
 
@@ -150,6 +178,9 @@ Run in the repository directory:
 
 ```sh
 ./scripts/detect_boards.sh
+./scripts/python.sh -m benchos.cli harness
+./scripts/python.sh -m benchos.cli --port /dev/cu.usbmodem1201 pair-voltage
+./scripts/python.sh -m benchos.cli --port /dev/cu.usbmodem1201 test physical_tests/imu_vcc.yaml
 ./scripts/python.sh -m pytest -q
 ```
 
@@ -191,10 +222,11 @@ and are not included in Git.
 
 ## Remaining work
 
-0. I²C electrical probing via S3 P1 is still pending. The replacement MPU has
-   already passed the still/tilted plausibility check through C6 serial.
-1. Obtain and identify the separate 5 V servo supply.
-2. Disconnect the photoresistor circuit, wire SG90 yellow to C6 GPIO20/T, brown to the
-   shared GND rail, red to the separate +5 V, and supply GND to the shared rail.
+1. Build and validate a buffered, high-impedance input before probing MPU
+   SDA/SCL. The current 10 kΩ/10 kΩ probe loads the bus and must not be assumed
+   suitable for I²C diagnosis.
+2. If testing SG90 motion, identify a separate regulated 5 V supply with
+   adequate current first. Then wire its ground to the shared rail, SG90 yellow
+   to C6 GPIO20/T, brown to ground, and red to that supply's +5 V.
 3. Flash normal servo firmware, run the physical signal check, enable sweep,
    and verify actual SG90 movement. Record the result in `VALIDATION.md`.

@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 from .client import BenchClient
+from .harness import describe_harness
 
 
 @dataclass(frozen=True)
@@ -68,11 +69,17 @@ CHECK_TYPES = {
 }
 
 
-def load_suite(path: str | Path) -> tuple[str, list]:
+def load_suite(path: str | Path) -> tuple[str, list, dict[str, str]]:
     source = Path(path)
     data = yaml.safe_load(source.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or not isinstance(data.get("checks"), list):
         raise ValueError("Test file needs a 'checks' list")
+    expected_nets = data.get("expected_nets", {})
+    if not isinstance(expected_nets, dict) or not all(
+        key in {"P1", "P2"} and isinstance(value, str) and value
+        for key, value in expected_nets.items()
+    ):
+        raise ValueError("expected_nets must map probe names to nonempty net names")
     checks = []
     for item in data["checks"]:
         if not isinstance(item, dict) or item.get("type") not in CHECK_TYPES:
@@ -80,11 +87,17 @@ def load_suite(path: str | Path) -> tuple[str, list]:
         check_type = item["type"]
         checks.append(CHECK_TYPES[check_type](**{key: value for key, value in item.items()
                                                    if key != "type"}))
-    return str(data.get("name") or source.stem), checks
+    return str(data.get("name") or source.stem), checks, expected_nets
 
 
 def run_suite(client: BenchClient, path: str | Path, log_path: str | None = None) -> dict:
-    name, checks = load_suite(path)
+    name, checks, expected_nets = load_suite(path)
+    if expected_nets:
+        declared = describe_harness()["probes"]
+        for probe, net in expected_nets.items():
+            actual = declared[probe]
+            if actual["state"] != "connected" or actual["net"] != net:
+                raise ValueError(f"{name} requires declared {probe} on {net}; check wiring and harness/current.yaml")
     results = []
     for check in checks:
         result = check.run(client)
@@ -94,5 +107,5 @@ def run_suite(client: BenchClient, path: str | Path, log_path: str | None = None
                       "test": name, **result}
             with Path(log_path).open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(record) + "\n")
-    return {"test": name, "pass": bool(results) and all(r["pass"] for r in results),
+    return {"test": name, "expected_nets_source": "user_declared", "pass": bool(results) and all(r["pass"] for r in results),
             "checks": results}

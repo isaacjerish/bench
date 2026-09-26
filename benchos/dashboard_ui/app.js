@@ -1,15 +1,15 @@
 const $ = (id) => document.getElementById(id);
 const MODES = {
-  light: {title:'Light sensor', accent:'cross-check', description:'Compare what the ESP32-C6 says against what the ESP32-S3 physically measures.', tag:'PHOTORESISTOR', wiring:'C6 3V3 → photoresistor → T. T → 10 kΩ → GND. T → C6 GPIO1 and S3 P1.', physicalUnit:'V', dutUnit:'V', physicalDescription:'Measured directly at test row T', dutDescription:'Claimed by device firmware', contextTitle:'Know where the signal breaks.', contextDescription:'A serial log only reports what the firmware thinks happened. BenchOS checks voltage at the same sensor node, exposing false or stale readings.', steps:['C6 samples light','S3 checks voltage','Compare values'], scale:3.3},
-  led: {title:'LED output', accent:'timing check', description:'Verify the actual blink frequency on GPIO20, even when firmware says the LED is blinking.', tag:'DIGITAL OUTPUT', wiring:'C6 GPIO20 → T and S3 P1. T → 330 Ω → LED anode. LED cathode → shared GND.', physicalUnit:'Hz', dutUnit:'', physicalDescription:'Rising edges counted at test row T', dutDescription:'No independent DUT report in this demo', contextTitle:'Catch the wrong pin.', contextDescription:'If C6 toggles another pin or the wire comes loose, BenchOS sees zero transitions despite a successful firmware log.', steps:['C6 drives GPIO20','S3 counts edges','Check 2 Hz'], scale:3},
+  light: {title:'Light sensor', accent:'cross-check', description:'Compare what the ESP32-C6 says against what the ESP32-S3 physically measures.', tag:'PHOTORESISTOR', wiring:'C6 3V3 → photoresistor → T. T → 10 kΩ → GND. T → C6 GPIO1 and S3 P1.', physicalUnit:'V', dutUnit:'V', physicalDescription:'Measured directly at test row T', dutDescription:'Claimed by device firmware', contextTitle:'Know where the signal breaks.', contextDescription:'A serial log only reports what the firmware thinks happened. Benchy checks voltage at the same sensor node, exposing false or stale readings.', steps:['C6 samples light','S3 checks voltage','Compare values'], scale:3.3},
+  led: {title:'LED output', accent:'timing check', description:'Verify the actual blink frequency on GPIO20, even when firmware says the LED is blinking.', tag:'DIGITAL OUTPUT', wiring:'C6 GPIO20 → T and S3 P1. T → 330 Ω → LED anode. LED cathode → shared GND.', physicalUnit:'Hz', dutUnit:'', physicalDescription:'Rising edges counted at test row T', dutDescription:'No independent DUT report in this demo', contextTitle:'Catch the wrong pin.', contextDescription:'If C6 toggles another pin or the wire comes loose, Benchy sees zero transitions despite a successful firmware log.', steps:['C6 drives GPIO20','S3 counts edges','Check 2 Hz'], scale:3},
   servo: {title:'Servo control', accent:'signal audit', description:'Inspect frequency and pulse width on the servo signal wire before attaching the motor.', tag:'PWM SIGNAL', wiring:'C6 GPIO20 → T, S3 P1, and SG90 yellow. SG90 brown → shared GND. Red needs a separate verified 5 V supply; currently disconnected.', physicalUnit:'Hz', dutUnit:'µs', physicalDescription:'Frequency measured at P1', dutDescription:'High pulse width measured at P1', contextTitle:'Check timing before motion.', contextDescription:'A safe servo demo starts by verifying 50 Hz and a 900–2100 µs high pulse. Visible motion still requires a separate verified 5 V supply.', steps:['C6 sends PWM','S3 counts pulses','Verify width'], scale:65},
-  imu: {title:'Motion sensor', accent:'live stream', description:'Watch the ESP32-C6 read acceleration from the MPU family breakout as you tilt it.', tag:'I²C SENSOR', wiring:'MPU VCC → C6 3V3; GND → shared GND; SDA → C6 IO5; SCL → C6 IO7; ADO → GND; NCS → 3V3. S3 P1 is not on this bus yet.', physicalUnit:'', dutUnit:'g', physicalDescription:'P1 bus observation is not connected yet', dutDescription:'Acceleration magnitude reported by C6', contextTitle:'Verify the stream, then the bus.', contextDescription:'The C6 motion stream proves it can read the MPU. Independent electrical evidence requires moving the S3 P1 tip to an isolated I²C line.', steps:['C6 reads MPU','Tilt the board','Probe I²C bus'], scale:2}
+  imu: {title:'Motion sensor', accent:'power + motion', description:'Check the MPU supply independently while the ESP32-C6 reports acceleration.', tag:'I²C SENSOR', wiring:'Loading declared wiring…', physicalUnit:'V', dutUnit:'g', physicalDescription:'S3 P2 measures the declared MPU VCC net', dutDescription:'Acceleration magnitude reported by C6', contextTitle:'Separate supply from sensor data.', contextDescription:'The S3 checks voltage at P2 when the harness declares it connected to MPU VCC. Motion values still come from C6; the I²C bus is not independently decoded.', steps:['S3 checks VCC','C6 reads MPU','Compare evidence'], scale:2}
 };
 const PREVIEW = {
   light:{physical:{voltage_v:2.207},dut:{reported_voltage_v:0},diagnosis:{state:'fail',title:'Sensor report disagrees',detail:'The DUT is 2.21 V away from the independent probe (>0.45 V).'}},
   led:{physical:{frequency_hz:2,edges:4,pulse_us:0},dut:null,diagnosis:{state:'pass',title:'Physical signal matches',detail:'The S3 probe measured the expected timing at P1.'}},
   servo:{physical:{frequency_hz:49.95,edges:50,pulse_us:1500},dut:null,diagnosis:{state:'pass',title:'Physical signal matches',detail:'The S3 probe measured the expected timing at P1.'}},
-  imu:{physical:null,dut:{x_g:0.12,y_g:-0.08,z_g:0.99,magnitude_g:1.00,address:'0x68',who_am_i:'0x71'},diagnosis:{state:'unverified',title:'Motion stream detected',detail:'These values come from the DUT. Move P1 to an isolated I²C line for independent electrical evidence.'}}
+  imu:{physical:{voltage_v:3.25,probe:'P2'},dut:{x_g:0.12,y_g:-0.08,z_g:0.99,magnitude_g:1.00,address:'0x68',who_am_i:'0x70'},diagnosis:{state:'unverified',evidence:'mixed',title:'Power verified; motion stream detected',detail:'S3 P2 measured 3.25 V at MPU VCC. Motion values are from C6; the I²C bus is not independently decoded.'}}
 };
 let mode='light', preview=false, busy=false, generation=0, timer=null;
 const history={physical:[],dut:[]};
@@ -19,7 +19,7 @@ function benchScene(which){
     light:{center:'T / SENSOR NODE',bottom:'PHOTORESISTOR + PULL-DOWN'},
     led:{center:'T / OUTPUT NODE',bottom:'LED + SERIES RESISTOR'},
     servo:{center:'T / SERVO SIGNAL',bottom:'RED POWER LEAD UNCONNECTED'},
-    imu:{center:'MPU / I²C',bottom:'SDA + SCL · 3.3 V ONLY'}
+    imu:{center:'U / MPU VCC',bottom:'P2 POWER CHECK · 3.3 V ONLY'}
   };
   const c=captions[which];
   return `<div class="scene" data-mode="${which}">
@@ -37,13 +37,14 @@ function renderMode(){
   $('breadcrumb-mode').textContent=mode.toUpperCase();
   $('page-title').innerHTML=`${c.title} <em>${c.accent}</em>`;
   $('page-description').textContent=c.description;
-  $('diagram-tag').textContent=`${c.tag} · REFERENCE`;
+  $('diagram-tag').textContent=`${c.tag} · ${mode==='imu'?'DECLARED WIRING':'REFERENCE'}`;
   $('wiring-description').textContent=c.wiring;
   $('circuit-diagram').innerHTML=benchScene(mode);
   $('circuit-diagram').dataset.mode=mode;
   $('physical-unit').textContent=c.physicalUnit;
   $('dut-unit').textContent=c.dutUnit;
   $('physical-description').textContent=c.physicalDescription;
+  $('physical-source-label').textContent=mode==='imu'?'INDEPENDENT / S3 P2':'INDEPENDENT / S3 P1';
   $('dut-description').textContent=c.dutDescription;
   $('second-source-label').textContent=mode==='servo'?'PULSE WIDTH':mode==='led'?'DUT REPORT':'DUT REPORT';
   $('second-source-badge').textContent=mode==='servo'?'ESP32-S3 · P1':mode==='led'?'NOT REPORTED':'ESP32-C6 · SERIAL';
@@ -73,6 +74,7 @@ function sampleValue(kind,data){
     if(mode==='light'&&data.physical)return [data.physical.voltage_v,Number(data.physical.voltage_v).toFixed(3)];
     if(mode==='led'&&data.physical)return [data.physical.frequency_hz,Number(data.physical.frequency_hz).toFixed(1)];
     if(mode==='servo'&&data.physical)return [data.physical.frequency_hz,Number(data.physical.frequency_hz).toFixed(2)];
+    if(mode==='imu'&&data.physical)return [data.physical.voltage_v,Number(data.physical.voltage_v).toFixed(3)];
   }else{
     if(mode==='light'&&data.dut)return [data.dut.reported_voltage_v,Number(data.dut.reported_voltage_v).toFixed(3)];
     if(mode==='servo'&&data.physical)return [data.physical.pulse_us,String(data.physical.pulse_us)];
@@ -89,17 +91,17 @@ function renderData(data){
   $('verdict-block').className=`verdict-block ${state==='unknown'?'neutral':state}`;
   $('verdict-icon').className=`verdict-icon ${state==='unknown'?'':state}`;
   $('verdict-icon').textContent=state==='pass'?'✓':state==='fail'?'!':state==='unverified'?'?':'—';
-  $('verdict-label').textContent=state==='pass'?'PHYSICAL CHECK PASSED':state==='fail'?'PHYSICAL FAULT DETECTED':state==='unverified'?'DUT REPORT ONLY':'INSUFFICIENT EVIDENCE';
+  $('verdict-label').textContent=state==='pass'?'PHYSICAL CHECK PASSED':state==='fail'?(data.diagnosis.evidence==='dut'?'DUT DATA ANOMALY':data.diagnosis.evidence==='mixed'?'POWER PRESENT · LINK FAILED':'PHYSICAL FAULT DETECTED'):state==='unverified'?(data.physical?'POWER VERIFIED · BUS UNVERIFIED':'DUT REPORT ONLY'):'INSUFFICIENT EVIDENCE';
   $('verdict-title').textContent=data.diagnosis.title;$('verdict-detail').textContent=data.diagnosis.detail;
   for(const kind of ['physical','dut']){
     const measurement=sampleValue(kind,data),target=$(`${kind}-value`);
     target.textContent=measurement?measurement[1]:'—';
-    if(measurement){history[kind].push(measurement[0]);if(history[kind].length>22)history[kind].shift();renderSpark(kind,kind==='dut'&&mode==='servo'?2200:MODES[mode].scale)}
+    if(measurement){history[kind].push(measurement[0]);if(history[kind].length>22)history[kind].shift();renderSpark(kind,kind==='dut'&&mode==='servo'?2200:kind==='physical'&&mode==='imu'?3.5:MODES[mode].scale)}
   }
   if(mode==='imu'&&data.dut){$('dut-description').textContent=`x ${data.dut.x_g.toFixed(2)} · y ${data.dut.y_g.toFixed(2)} · z ${data.dut.z_g.toFixed(2)} g${data.dut.who_am_i?' · ID '+data.dut.who_am_i:''}`}
   else $('dut-description').textContent=MODES[mode].dutDescription;
   $('sample-time').textContent=new Date().toLocaleTimeString();
-  $('confidence-source').textContent=mode==='imu'?'C6 serial only':'Physical S3 probe';
+  $('confidence-source').textContent=mode==='imu'?(data.physical?'S3 P2 power + C6 serial':'C6 serial only'):'Physical S3 probe';
   const errs=(data.errors||[]).map(e=>`${e.device}: ${e.message}`);
   $('footer-status').textContent=preview?'PREVIEW · sample data':errs.length?errs.join(' · '):`Last sample ${new Date().toLocaleTimeString()}`;
   const connected=!!(data.physical||data.dut);
@@ -131,8 +133,20 @@ async function loadPorts(){
     $('connection-label').textContent=data.ports.length?`${data.ports.length} serial port${data.ports.length===1?'':'s'} found`:'No serial ports found';
   }catch(err){$('footer-status').textContent=`Port discovery failed: ${err.message}`}
 }
+async function loadHarness(){
+  try{
+    const response=await fetch('/api/harness',{cache:'no-store'}),data=await response.json();
+    if(!response.ok)throw Error(data.error||'Harness unavailable');
+    const probe=data.probes?.P2,dut=data.dut||{};
+    const attached=probe?.state==='connected'&&probe.net==='MPU_VCC';
+    MODES.imu.wiring=attached
+      ?`Declared: ${probe.tip} (S3 P2) → MPU VCC; SDA → ${dut.sensor_sda||'unspecified'}; SCL → ${dut.sensor_scl||'unspecified'}. MPU GND → shared GND; ADO → GND; NCS → 3V3. P1: ${data.probes?.P1?.net||'unspecified'}. Confirm this map after any wire move.`
+      :'P2 is not declared connected to MPU VCC. Update harness/current.yaml after checking the wiring; the dashboard omits the independent supply check.';
+  }catch(err){MODES.imu.wiring=`Wiring declaration unavailable: ${err.message}. Check harness/current.yaml before interpreting P2.`}
+  if(mode==='imu')$('wiring-description').textContent=MODES.imu.wiring;
+}
 document.querySelectorAll('.mode-button').forEach(button=>button.addEventListener('click',()=>{mode=button.dataset.mode;generation++;renderMode()}));
 for(const kind of ['lab','dut'])$(`${kind}-port`).addEventListener('change',event=>{localStorage.setItem(`benchos-${kind}-port`,event.target.value);generation++;tick()});
 $('preview-toggle').addEventListener('click',()=>{preview=!preview;generation++;document.body.classList.toggle('preview',preview);$('preview-toggle').classList.toggle('active',preview);$('preview-toggle').setAttribute('aria-pressed',String(preview));$('session-badge').textContent=preview?'PREVIEW DATA':'LIVE SESSION';renderMode()});
-$('refresh-button').addEventListener('click',async()=>{await loadPorts();generation++;tick()});
-loadPorts().then(()=>{renderMode();timer=setInterval(tick,3500)});
+$('refresh-button').addEventListener('click',async()=>{await Promise.all([loadPorts(),loadHarness()]);generation++;tick()});
+Promise.all([loadPorts(),loadHarness()]).then(()=>{renderMode();timer=setInterval(tick,3500)});

@@ -40,6 +40,15 @@ not mocked values.
 | Replacement MPU held on edge by user | X about -0.988 g, Y about 0.017 g, Z about 0.133 g; magnitude about 0.997 g, plausible 90° gravity shift |
 | Replacement MPU dashboard | DUT stream detected, `saturated_axes: []`, state `unverified` because S3 P1 has not probed the I²C lines |
 | Host tests after clipped-axis dashboard check | 22 passed |
+| S3 firmware P2 probe | S3 `INFO` reported `PROBES 2`; existing P1 still read about 2.16 V |
+| P2 on known S3 3V3 | 3.265 V and HIGH; P1 simultaneously reported 2.170 V on separate light node |
+| P2 on known GND | 0.002 V and LOW; P1 reported 2.155 V |
+| P2 on MPU sensor-side VCC | `imu_vcc` physical profile PASS at 3.231 V and HIGH; C6 MPU stream remained healthy after USB reconnection |
+| Live two-source IMU dashboard | S3 P2 measured 3.234 V; C6 reported magnitude 0.996 g; verdict explicitly says power verified and I²C bus unverified |
+| Deliberate SCL open fault | P2 `imu_vcc` PASS at 3.228 V/HIGH while C6 reported `IMU_ERROR no_device_at_0x68_or_0x69`; Benchy diagnosed power present with IMU link failure |
+| SCL restored | P2 `imu_vcc` PASS at 3.246 V/HIGH; C6 returned `WHO_AM_I=0x70` and 1.096 g magnitude |
+| Current host suite after P2, harness, and IMU link diagnostics | 28 passed with local loopback access |
+| Live dashboard after SCL restoration and software restart | P2 measured 3.225 V; C6 reported 1.087 g, no clipped axes; state `unverified` because bus traffic is not independently decoded |
 
 The resistor divider is nominally 1:2. These values show a working physical
 measurement loop, but the ADC and resistor tolerances do not make it a
@@ -59,7 +68,8 @@ suitable servo power source is available.
 
 The replacement MPU is wired and responds over I²C with plausible still and
 tilted values. The first module had a saturated Z axis. The stream is not
-independently confirmed by the S3. The dashboard server is
+independently confirmed by the S3, but its VCC supply is now measured by P2.
+The dashboard server is
 available via `./scripts/python.sh -m benchos.dashboard` when started; do not
 assume the previous process is still running. `read_imu_stream` returns the
 C6's claim rather than physical proof from P1.

@@ -53,3 +53,10 @@ the same C6 pins. It read about (0, 0.013, 1.086) g while still and
 (-0.988, 0.017, 0.133) g held on edge, a plausible gravity-vector change.
 The dashboard still labels this a DUT stream until S3 physically probes the
 I²C lines.
+
+The current firmware retries device discovery about once per second when
+the MPU is absent and re-enters discovery after a read error. In the live
+SCL-open test, the independent P2 supply measurement stayed at 3.228 V while
+the C6 reported `IMU_ERROR no_device_at_0x68_or_0x69`. Restoring SCL and
+reconnecting USB returned normal acceleration. The observed recovery used a
+USB reconnect; hot reconnection without reboot has not been physically tested.

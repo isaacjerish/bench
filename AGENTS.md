@@ -1,6 +1,6 @@
-# BenchOS instructions for Codex
+# Benchy instructions for Codex
 
-BenchOS provides real physical readings through an ESP32-S3. Firmware logs,
+Benchy provides real physical readings through an ESP32-S3. Firmware logs,
 successful flashing, and serial messages do not prove the circuit works.
 
 When debugging hardware:
@@ -13,9 +13,13 @@ When debugging hardware:
 6. Reflash only when necessary, then remeasure.
 7. Run the physical check and report the measured values.
 
-Never turn a measurement probe into an output. The P1 tip accepts only known
+Never turn a measurement probe into an output. P1 and P2 accept only known
 0–3.3 V logic with common ground. Do not connect 5 V or unknown voltages to
-either P1 branch. The servo uses a separate 5 V supply and common ground.
+either branch. The two 10 kΩ divider resistors load the measured net, so do
+not assume they are safe to attach to a weakly pulled I²C line. Read the
+declared `harness/current.yaml` before selecting a probe, and confirm physical
+placement with the user when it could have changed. The servo uses a separate
+5 V supply and common ground.
 Avoid repeatedly flashing a board when one measurement could test the current
 hypothesis. Prefer deterministic physical tests over visual guesses. A 250 ms
 frequency window is only a quick estimate at 50 Hz; use 1000 ms for pass/fail.

@@ -4,6 +4,11 @@ from benchos.protocol import BenchDeviceError, BenchProtocolError, parse_respons
 
 
 def test_measurement_lines_are_structured():
+    assert parse_response("OK INFO BenchOS-S3 v0.1 PROBES 2 ADC_SAMPLES 32") == {
+        "kind": "info", "device": "BenchOS-S3", "version": "v0.1",
+        "probe_count": 2, "adc_samples": 32,
+        "text": "BenchOS-S3 v0.1 PROBES 2 ADC_SAMPLES 32"
+    }
     assert parse_response("OK VOLTAGE P1 3.271 RAW 2030 SAMPLES 32") == {
         "kind": "voltage", "probe": "P1", "voltage_v": 3.271, "raw": 2030, "samples": 32
     }

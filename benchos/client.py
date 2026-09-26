@@ -11,6 +11,7 @@ from pathlib import Path
 import serial
 
 from . import config, ports
+from .harness import describe_harness
 from .protocol import BenchError, BenchProtocolError, parse_response, validate_probe
 from .serial_lock import SerialPortLock
 
@@ -130,6 +131,22 @@ class BenchClient:
 
     def measure_voltage(self, probe: str) -> dict:
         return self._request(f"READ_ADC {validate_probe(probe)}", "voltage")
+
+    def measure_voltage_pair(self, probe_a: str = "P1", probe_b: str = "P2") -> dict:
+        """Read two input probes in order; these are close in time, not simultaneous."""
+        names = (validate_probe(probe_a), validate_probe(probe_b))
+        if names[0] == names[1] or set(names) != {"P1", "P2"}:
+            raise ValueError("Choose distinct P1 and P2 probes")
+        first_at = datetime.now(timezone.utc).isoformat()
+        start = time.monotonic()
+        first = self.measure_voltage(names[0])
+        second_at = datetime.now(timezone.utc).isoformat()
+        second = self.measure_voltage(names[1])
+        declared = describe_harness()["probes"]
+        return {"simultaneous": False, "elapsed_ms": round((time.monotonic() - start) * 1000, 1),
+                "wiring_source": "user_declared",
+                "readings": [{"timestamp": first_at, "declared_net": declared[names[0]]["net"], **first},
+                             {"timestamp": second_at, "declared_net": declared[names[1]]["net"], **second}]}
 
     def read_digital(self, probe: str) -> dict:
         return self._request(f"READ_DIGITAL {validate_probe(probe)}", "digital")

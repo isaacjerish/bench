@@ -1,12 +1,16 @@
-# BenchOS
+# Benchy
 
-BenchOS lets Codex inspect **real voltages and signal timing** while it debugs
+The Python package and firmware still use `benchos` identifiers for
+compatibility. See [the instrument roadmap](BENCHY_ROADMAP.md) for the next
+hardware and software capabilities.
+
+Benchy lets Codex inspect **real voltages and signal timing** while it debugs
 firmware. The ESP32-S3 is a small, input-only lab instrument; the ESP32-C6 is a
 separate device under test (DUT). No cloud, API key, frontend, or separate LLM
 runner is required.
 
 ```text
-Codex --local MCP--> Python BenchOS --USB serial--> ESP32-S3 --P1--> circuit
+Codex --local MCP--> Python Benchy --USB serial--> ESP32-S3 --P1/P2--> circuit
 Codex --Arduino CLI/USB---------------------------> ESP32-C6 --> servo signal
 ```
 
@@ -44,6 +48,22 @@ ground jumper on T. Expect approximately 3.3 V from `voltage P1`. Remove
 the 3V3-to-T jumper, then connect **GND to T**; expect approximately 0 V.
 Never connect 3V3 and GND to T at the same time. T is the single movable
 probe point for later DUT tests.
+
+## Second input probe, P2
+
+The current S3 firmware also defines P2 on S3 IO4 (ADC) and IO5 (digital).
+On a separate pair of empty breadboard rows U and N, wire two additional
+10 kΩ resistors as `U --10k-- N --10k-- shared GND`. Connect S3 IO4 to N and
+S3 IO5 to U. Do not join U to P1's row T or midpoint M. This is another
+**input-only, known 0–3.3 V** probe; S3 IO5 is directly connected to U and
+has no protection for 5 V or unknown voltages. The C6's IO5 is separately
+used for MPU SDA and must not be moved when adding P2.
+
+Run `./scripts/python.sh -m benchos.cli harness` to see the **declared**
+wiring. It is not automatic breadboard discovery. After physical validation,
+`voltage P2`, `digital P2`, and `pair-voltage` can inspect both test points.
+The pair command reads P1 then P2 in order and reports timestamps; it does
+not sample them simultaneously.
 
 ## Install software
 
@@ -98,7 +118,7 @@ replies. `--log measurements.jsonl` records timestamped physical readings and
 pass/fail checks. The port name is discovered at runtime; do not copy a stale
 one from an example.
 
-## Connect BenchOS to Codex
+## Connect Benchy to Codex
 
 The server is a local stdio process using the current Python MCP SDK. It is
 already registered on this Mac. To recreate the registration, use absolute
@@ -113,8 +133,8 @@ codex mcp list
 `BENCHOS_PORT` with another `--env` flag
 if several USB serial devices are connected. `BENCHOS_LOG` sets a JSONL file
 for MCP measurements. Restart the Codex task after registration so the tools appear.
-Ask: **“Use BenchOS to measure the voltage on P1.”**
-The MCP server also exposes `check_circuit` for the four named physical test
+Ask: **“Use Benchy to measure the voltage on P1.”**
+The MCP server also exposes `check_circuit` for the named physical test
 profiles and `read_imu_stream` for the C6 motion report. IMU serial values are
 labeled as DUT claims until the S3 independently observes the bus.
 

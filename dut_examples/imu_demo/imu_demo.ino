@@ -7,6 +7,7 @@ static constexpr uint8_t ACCEL_CONFIG = 0x1C;
 static constexpr uint8_t ACCEL_XOUT_H = 0x3B;
 static uint8_t imuAddress = 0;
 static uint8_t imuId = 0;
+static bool i2cReady = false;
 
 bool readRegisters(uint8_t address, uint8_t reg, uint8_t *data, size_t length) {
   Wire.beginTransmission(address);
@@ -24,15 +25,8 @@ bool writeRegister(uint8_t address, uint8_t reg, uint8_t value) {
   return Wire.endTransmission() == 0;
 }
 
-void setup() {
-  Serial.begin(115200);
-  delay(200);
-  Serial.printf("IMU demo: SDA=GPIO%d SCL=GPIO%d fault=%u\n",
-                IMU_SDA_GPIO, IMU_SCL_GPIO, DEMO_FAULT);
-  if (!Wire.begin(IMU_SDA_GPIO, IMU_SCL_GPIO, IMU_I2C_HZ)) {
-    Serial.println("IMU_ERROR i2c_init");
-    return;
-  }
+bool detectImu() {
+  imuAddress = 0;
   for (uint8_t address : {uint8_t(0x68), uint8_t(0x69)}) {
     uint8_t id = 0;
     if (readRegisters(address, WHO_AM_I, &id, 1)) {
@@ -44,39 +38,56 @@ void setup() {
   }
   if (!imuAddress) {
     Serial.println("IMU_ERROR no_device_at_0x68_or_0x69");
-    return;
+    return false;
   }
   if (!writeRegister(imuAddress, PWR_MGMT_1, 0x80)) {
     Serial.println("IMU_ERROR reset_failed");
     imuAddress = 0;
-    return;
+    return false;
   }
   delay(150);
   if (!writeRegister(imuAddress, PWR_MGMT_1, 0x01) ||
       !writeRegister(imuAddress, ACCEL_CONFIG, 0x00)) {
     Serial.println("IMU_ERROR configuration_failed");
     imuAddress = 0;
-    return;
+    return false;
   }
   uint8_t accelConfig = 0xFF;
   if (!readRegisters(imuAddress, ACCEL_CONFIG, &accelConfig, 1)) {
     Serial.println("IMU_ERROR config_readback_failed");
     imuAddress = 0;
-    return;
+    return false;
   }
   Serial.printf("IMU_CONFIG accel=0x%02X expected=0x00\n", accelConfig);
   delay(100);
+  return true;
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(200);
+  Serial.printf("IMU demo: SDA=GPIO%d SCL=GPIO%d fault=%u\n",
+                IMU_SDA_GPIO, IMU_SCL_GPIO, DEMO_FAULT);
+  i2cReady = Wire.begin(IMU_SDA_GPIO, IMU_SCL_GPIO, IMU_I2C_HZ);
+  if (!i2cReady) Serial.println("IMU_ERROR i2c_init");
+  else detectImu();
 }
 
 void loop() {
+  if (!i2cReady) {
+    delay(1000);
+    return;
+  }
   if (!imuAddress) {
+    detectImu();
     delay(1000);
     return;
   }
   uint8_t data[6];
   if (!readRegisters(imuAddress, ACCEL_XOUT_H, data, sizeof(data))) {
     Serial.println("IMU_ERROR read_failed");
-    delay(IMU_REPORT_MS);
+    imuAddress = 0;
+    delay(1000);
     return;
   }
   const int16_t x = static_cast<int16_t>((data[0] << 8) | data[1]);
@@ -85,7 +96,8 @@ void loop() {
   uint8_t accelConfig = 0xFF;
   if (!readRegisters(imuAddress, ACCEL_CONFIG, &accelConfig, 1)) {
     Serial.println("IMU_ERROR config_readback_failed");
-    delay(IMU_REPORT_MS);
+    imuAddress = 0;
+    delay(1000);
     return;
   }
   Serial.printf("IMU_RAW x=%d y=%d z=%d bytes=%02X%02X_%02X%02X_%02X%02X accel_config=0x%02X\n",

@@ -14,9 +14,11 @@ from importlib.resources import files
 from urllib.parse import parse_qs, urlsplit
 
 import serial
+import yaml
 
 from .client import BenchClient
 from .light import read_light_report
+from .harness import describe_harness
 from .ports import available_ports, candidate_ports
 from .protocol import BenchError
 from .serial_lock import SerialPortLock
@@ -31,7 +33,8 @@ ASSETS = {"/": ("index.html", "text/html; charset=utf-8"),
              for mode in MODES}}
 
 
-def diagnose(mode: str, physical: dict | None, dut: dict | None) -> dict:
+def diagnose(mode: str, physical: dict | None, dut: dict | None,
+             errors: list[dict] | None = None) -> dict:
     """Keep the verdict grounded in measurements, not DUT claims alone."""
     if mode == "light":
         if physical is None or dut is None:
@@ -66,15 +69,31 @@ def diagnose(mode: str, physical: dict | None, dut: dict | None) -> dict:
         return {"state": "pass", "title": "Physical signal matches",
                 "detail": "The S3 probe measured the expected timing at P1."}
     if mode == "imu":
+        if physical is not None:
+            volts = physical["voltage_v"]
+            if not 3.0 <= volts <= 3.4:
+                return {"state": "fail", "evidence": "physical",
+                        "title": "Sensor supply outside target",
+                        "detail": f"S3 P2 reads {volts:.2f} V on the declared MPU VCC net; expected 3.0–3.4 V."}
         if dut is None:
+            imu_error = next((item["message"] for item in (errors or [])
+                              if item.get("device") == "C6" and "IMU_ERROR" in item.get("message", "")), None)
+            if physical is not None and imu_error:
+                return {"state": "fail", "evidence": "mixed",
+                        "title": "Power present; IMU link failed",
+                        "detail": f"S3 P2 reads {physical['voltage_v']:.2f} V at MPU VCC. {imu_error}. Check SCL/SDA and sensor configuration."}
             return {"state": "unknown", "title": "Awaiting IMU stream",
-                    "detail": "Connect the C6 and flash the IMU demo."}
+                    "detail": "Connect the C6 and flash the IMU demo; inspect C6 serial errors."}
         if dut.get("saturated_axes"):
             axes = ", ".join(dut["saturated_axes"])
-            return {"state": "fail", "title": "Accelerometer axis clipped",
+            return {"state": "fail", "evidence": "dut", "title": "Accelerometer axis clipped",
                     "detail": f"The DUT reports {axes} at the ±2 g limit. Check raw registers and repeat with the board still."}
+        if physical is not None:
+            return {"state": "unverified", "evidence": "mixed",
+                    "title": "Power verified; motion stream detected",
+                    "detail": f"S3 P2 measured {physical['voltage_v']:.2f} V at MPU VCC. Motion values are from C6; the I²C bus is not independently decoded."}
         return {"state": "unverified", "title": "Motion stream detected",
-                "detail": "These values come from the DUT. Move P1 to an isolated I²C line for independent electrical evidence."}
+                "detail": "These values come from the DUT. Connect S3 P2 to the known MPU VCC net to verify sensor power."}
     raise ValueError(f"Unknown mode: {mode}")
 
 
@@ -88,6 +107,8 @@ def read_imu_report(port: str, timeout_s: float = 2.5) -> dict:
             deadline = time.monotonic() + timeout_s
             while time.monotonic() < deadline:
                 line = dut.readline().decode("ascii", errors="replace").strip()
+                if line.startswith("IMU_ERROR "):
+                    raise BenchError(f"C6 reported {line}")
                 identity = WHO_LINE.fullmatch(line)
                 if identity:
                     found = {"address": "0x" + identity.group(1).upper(),
@@ -131,13 +152,22 @@ class DashboardState:
         result = {"mode": mode, "timestamp": datetime.now(timezone.utc).isoformat(),
                   "lab_port": lab_port, "dut_port": dut_port,
                   "physical": None, "dut": None, "errors": []}
+        imu_vcc_declared = False
+        if mode == "imu":
+            try:
+                probe = describe_harness()["probes"]["P2"]
+                imu_vcc_declared = probe["state"] == "connected" and probe["net"] == "MPU_VCC"
+            except (OSError, ValueError, yaml.YAMLError) as exc:
+                result["errors"].append({"device": "Harness", "message": str(exc)})
+            if not imu_vcc_declared:
+                result["errors"].append({"device": "Harness", "message": "P2 is not declared on MPU_VCC; power check omitted"})
         with self._lock:
-            if lab_port and mode != "imu":
+            if lab_port and (mode != "imu" or imu_vcc_declared):
                 try:
                     # Release serial after each sample so MCP/CLI may use the S3.
                     with BenchClient(lab_port) as client:
-                        if mode == "light":
-                            result["physical"] = client.measure_voltage("P1")
+                        if mode in {"light", "imu"}:
+                            result["physical"] = client.measure_voltage("P2" if mode == "imu" else "P1")
                         else:
                             duration = 1000 if mode == "servo" else 2000
                             result["physical"] = client.measure_frequency("P1", duration)
@@ -151,7 +181,7 @@ class DashboardState:
                         result["dut"] = read_imu_report(dut_port)
                 except (BenchError, OSError, ValueError) as exc:
                     result["errors"].append({"device": "C6", "message": str(exc)})
-        result["diagnosis"] = diagnose(mode, result["physical"], result["dut"])
+        result["diagnosis"] = diagnose(mode, result["physical"], result["dut"], result["errors"])
         return result
 
 
@@ -164,6 +194,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         route = urlsplit(self.path)
+        if route.path == "/api/harness":
+            try:
+                self._json(describe_harness())
+            except (OSError, ValueError, yaml.YAMLError) as exc:
+                self._json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
         if route.path == "/api/config":
             candidates = set(candidate_ports())
             self._json({"lab_port": self.server.state.lab_port,
@@ -219,7 +255,7 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("--web-port must be 1–65535")
     state = DashboardState(args.lab_port, args.dut_port)
     server = DashboardServer(("127.0.0.1", args.web_port), state)
-    print(f"BenchOS dashboard: http://127.0.0.1:{args.web_port}", flush=True)
+    print(f"Benchy dashboard: http://127.0.0.1:{args.web_port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

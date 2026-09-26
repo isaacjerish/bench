@@ -1,4 +1,6 @@
-from benchos.checks import FrequencyRangeCheck, VoltageRangeCheck
+import pytest
+
+from benchos.checks import FrequencyRangeCheck, VoltageRangeCheck, run_suite
 from benchos import light
 from benchos.light import parse_light_line
 
@@ -39,3 +41,10 @@ def test_light_cross_check_detects_false_dut_report(monkeypatch):
     assert result["enough_signal"]
     assert result["difference_v"] == 1.4
     assert not result["pass"]
+
+
+def test_imu_vcc_refuses_stale_declared_net(monkeypatch):
+    monkeypatch.setattr("benchos.checks.describe_harness", lambda: {"probes": {
+        "P2": {"state": "disconnected", "net": "MPU_VCC"}}})
+    with pytest.raises(ValueError, match="requires declared P2 on MPU_VCC"):
+        run_suite(FakeClient(), "physical_tests/imu_vcc.yaml")

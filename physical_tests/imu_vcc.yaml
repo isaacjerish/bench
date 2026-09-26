@@ -1,0 +1,11 @@
+name: imu_vcc
+expected_nets:
+  P2: MPU_VCC
+checks:
+  - type: voltage_range
+    probe: P2
+    minimum: 3.0
+    maximum: 3.4
+  - type: digital_state
+    probe: P2
+    expected: HIGH

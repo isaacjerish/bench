@@ -3,12 +3,14 @@
 from typing import Any
 from pathlib import Path
 
+import yaml
 from mcp.server.mcpserver import MCPServer
 
 from benchos import BenchClient
 from benchos.light import compare_light
 from benchos.checks import run_suite
 from benchos.dashboard import read_imu_report
+from benchos.harness import describe_harness as read_harness
 from benchos.protocol import BenchError
 
 mcp = MCPServer("benchos", instructions=(
@@ -18,7 +20,7 @@ mcp = MCPServer("benchos", instructions=(
     "The circuit must match the selected check profile; software cannot rewire it."
 ))
 
-PROFILES = {"rail_3v3", "ground", "led_blink", "servo_signal"}
+PROFILES = {"rail_3v3", "ground", "led_blink", "servo_signal", "imu_vcc"}
 PROFILE_DIR = Path(__file__).resolve().parent.parent / "physical_tests"
 
 
@@ -43,9 +45,24 @@ def lab_info() -> dict[str, Any]:
 
 
 @mcp.tool(structured_output=True)
+def describe_harness() -> dict[str, Any]:
+    """Return declared P1/P2 wiring and voltage limits; declarations are not proof."""
+    try:
+        return {"ok": True, **read_harness()}
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool(structured_output=True)
 def measure_voltage(probe: str) -> dict[str, Any]:
     """Measure approximate physical voltage on a 0–3.3 V probe tip."""
     return _measure("measure_voltage", probe)
+
+
+@mcp.tool(structured_output=True)
+def measure_voltage_pair() -> dict[str, Any]:
+    """Read P1 then P2 over one S3 connection; timestamps show they are not simultaneous."""
+    return _measure("measure_voltage_pair")
 
 
 @mcp.tool(structured_output=True)
@@ -72,9 +89,9 @@ def compare_light_sensor(dut_port: str) -> dict[str, Any]:
 
 @mcp.tool(structured_output=True)
 def check_circuit(profile: str) -> dict[str, Any]:
-    """Run a named physical pass/fail check: rail_3v3, ground, led_blink, or servo_signal."""
+    """Run a named physical check: rail_3v3, ground, led_blink, servo_signal, or imu_vcc."""
     if profile not in PROFILES:
-        return {"ok": False, "error": "Unknown profile. Choose rail_3v3, ground, led_blink, or servo_signal."}
+        return {"ok": False, "error": "Unknown profile. Choose rail_3v3, ground, led_blink, servo_signal, or imu_vcc."}
     try:
         with BenchClient(timeout=3.0) as client:
             return {"ok": True, **run_suite(client, PROFILE_DIR / f"{profile}.yaml")}

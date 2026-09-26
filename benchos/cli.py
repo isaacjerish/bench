@@ -9,20 +9,22 @@ from pathlib import Path
 from .checks import run_suite
 from .client import BenchClient
 from .light import compare_light
+from .harness import describe_harness
 from .ports import available_ports
 from .protocol import BenchError
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="benchos", description="BenchOS physical measurements")
+    parser = argparse.ArgumentParser(prog="benchos", description="Benchy physical measurements")
     parser.add_argument("--port", help="Explicit serial port; otherwise auto-discover")
     parser.add_argument("--verbose", action="store_true", help="Log serial TX/RX to stderr")
     parser.add_argument("--log", help="Append measurements and tests to a JSONL file")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("list", "ping", "info"):
+    for name in ("list", "ping", "info", "harness"):
         sub.add_parser(name)
     for name in ("voltage", "digital"):
         sub.add_parser(name).add_argument("probe")
+    sub.add_parser("pair-voltage", help="Read P1 then P2, close in time but not simultaneously")
     frequency = sub.add_parser("frequency")
     frequency.add_argument("probe")
     frequency.add_argument("--duration-ms", type=int, default=1000)
@@ -40,6 +42,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "list":
         print(json.dumps(available_ports(), indent=2))
         return 0
+    if args.command == "harness":
+        try:
+            print(json.dumps(describe_harness(), indent=2, default=str))
+            return 0
+        except (OSError, ValueError) as exc:
+            print(f"Benchy error: {exc}", file=sys.stderr)
+            return 2
     try:
         with BenchClient(args.port, verbose=args.verbose, log_path=args.log) as client:
             if args.command == "ping":
@@ -48,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
                 result = client.info()
             elif args.command == "voltage":
                 result = client.measure_voltage(args.probe)
+            elif args.command == "pair-voltage":
+                result = client.measure_voltage_pair()
             elif args.command == "digital":
                 result = client.read_digital(args.probe)
             elif args.command == "frequency":
@@ -63,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 result = run_suite(client, args.file, log_path=args.log)
     except (BenchError, OSError, ValueError, TypeError) as exc:
-        print(f"BenchOS error: {exc}", file=sys.stderr)
+        print(f"Benchy error: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(result, indent=2))
     return 1 if args.command in ("test", "light-compare") and not result["pass"] else 0

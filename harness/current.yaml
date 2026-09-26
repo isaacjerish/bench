@@ -1,0 +1,26 @@
+# This is user-declared wiring, not automatic circuit discovery.
+version: 1
+declared_on: "2026-09-26"
+voltage_limit_v: 3.3
+dut:
+  board: ESP32-C6
+  serial_port_hint: /dev/cu.usbmodem1101
+  firmware: imu_demo
+  connected_sensor: replacement MPU-6500-compatible breakout
+  sensor_sda: C6 IO5
+  sensor_scl: C6 IO7
+probes:
+  P1:
+    state: connected
+    net: LIGHT_SENSE
+    tip: breadboard row T
+    adc: S3 IO1 via 10k/10k divider
+    digital: S3 IO2 direct input
+    note: photoresistor node remains wired, but C6 currently runs imu_demo
+  P2:
+    state: connected
+    net: MPU_VCC
+    tip: breadboard row U
+    adc: S3 IO4 via 10k/10k divider
+    digital: S3 IO5 direct input
+    note: user connected tip U to MPU VCC; P2 passed 3V3, GND, and sensor VCC checks

@@ -1,10 +1,10 @@
 #pragma once
 #include <Arduino.h>
 
-// ESP32-S3 defaults: GPIO1 is ADC1_CH0; GPIO2 is a digital input.
-// Confirm both pins are exposed and free on your particular board.
-// The probe TIP connects directly to GPIO2 and through an equal-resistor
-// divider to GPIO1 (TIP--10k--GPIO1--10k--GND). Never put >3.3V on TIP.
+// Current ESP32-S3 bench: P1 uses GPIO1 ADC + GPIO2 digital; P2 uses
+// GPIO4 ADC + GPIO5 digital. All are INPUT only. Each probe TIP connects
+// directly to its digital pin and through an equal-resistor divider to
+// its ADC pin (TIP--10k--ADC--10k--GND). Never put >3.3V on either TIP.
 struct ProbeConfig {
   const char *name;
   uint8_t adcPin;
@@ -12,7 +12,10 @@ struct ProbeConfig {
   float adcScale;
 };
 
-static const ProbeConfig PROBES[] = {{"P1", 1, 2, 2.0f}};
+static const ProbeConfig PROBES[] = {
+    {"P1", 1, 2, 2.0f},
+    {"P2", 4, 5, 2.0f},
+};
 static constexpr size_t PROBE_COUNT = sizeof(PROBES) / sizeof(PROBES[0]);
 static constexpr uint32_t SERIAL_BAUD = 115200;
 static constexpr uint16_t ADC_SAMPLES = 32;
