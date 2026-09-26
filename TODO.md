@@ -13,11 +13,15 @@
 - [x] Physically exercise all three fault variants; each produced a failing P1 reading.
 - [x] Prepare and compile a 3.3 V photoresistor DUT and C6/S3 voltage comparison.
 - [x] Wire the photoresistor demo and validate normal, faulty, and repaired readings.
-- [x] Build local dashboard with live S3/C6 comparison, circuit views, and
-      clearly labeled preview data; verify it against the real light circuit.
-- [x] Redesign the dashboard in monochrome with four coherent overhead
-      breadboard images, exact wiring captions, and restrained motion.
+- [x] Build a local dashboard with live S3/C6 comparison and clearly labeled
+      preview data; verify the light comparison against the real circuit.
+- [x] Redesign the monochrome dashboard as a generic declared-net workspace
+      with an illustrative overhead map, serial monitor, and source inspector.
 - [x] Add named MCP physical checks and shared serial-port locking.
 - [x] Compile MPU-family motion demo; await physical wiring.
 - [ ] Hook up the SG90 and verify physical motion after identifying the Elegoo
       power module input/output labels and power source.
+- [ ] Implement agent-controlled DUT build/flash with port identity checks,
+      build evidence, postboot observation, and physical regression checks.
+- [ ] Physically validate S3 IO8/IO9 read-only I²C activity observation, then
+      build and validate bounded transaction capture/decode.

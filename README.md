@@ -1,8 +1,9 @@
 # Benchy
 
 The Python package and firmware still use `benchos` identifiers for
-compatibility. See [the instrument roadmap](BENCHY_ROADMAP.md) for the next
-hardware and software capabilities.
+compatibility. See [the instrument roadmap](BENCHY_ROADMAP.md) and
+[the agent-operated lab plan](AUTONOMY_PLAN.md) for the next hardware and
+software capabilities.
 
 Benchy lets Codex inspect **real voltages and signal timing** while it debugs
 firmware. The ESP32-S3 is a small, input-only lab instrument; the ESP32-C6 is a
