@@ -12,7 +12,7 @@ def test_harness_separates_declared_from_measured():
     assert result["probes"]["P1"]["net"] == "LIGHT_SENSE"
     assert result["probes"]["P2"]["state"] == "connected"
     assert result["probes"]["P2"]["net"] == "MPU_VCC"
-    assert result["bus_monitor"]["state"] == "pending"
+    assert result["bus_monitor"]["state"] == "connected"
 
 
 def test_probe_declaration_updates_only_selected_fields(tmp_path):
@@ -23,7 +23,7 @@ def test_probe_declaration_updates_only_selected_fields(tmp_path):
     assert result["probes"]["P1"]["net"] == "NEW_SENSOR"
     assert result["probes"]["P1"]["adc"] == "S3 IO1 via 10k/10k divider"
     assert result["probes"]["P2"]["state"] == "disconnected"
-    assert result["bus_monitor"]["state"] == "pending"
+    assert result["bus_monitor"]["state"] == "connected"
     assert result["source"] == "user_declared"
 
 

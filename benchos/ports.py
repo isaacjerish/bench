@@ -11,6 +11,9 @@ def available_ports() -> list[dict]:
             "vid": port.vid,
             "pid": port.pid,
             "manufacturer": port.manufacturer,
+            "serial_number": port.serial_number,
+            "product": port.product,
+            "location": port.location,
         }
         for port in list_ports.comports()
     ]

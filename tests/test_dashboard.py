@@ -109,6 +109,29 @@ def test_probe_explorer_preserves_order_and_declared_source(monkeypatch):
     assert sample["digital_states"] == {"P1": "LOW", "P2": "HIGH"}
 
 
+def test_bus_sample_reports_raw_activity_without_claiming_decode(monkeypatch):
+    class FakeClient:
+        def __init__(self, _port, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def measure_bus_activity(self, duration_ms):
+            return {"window_ms": duration_ms, "sda": {"edges": 12}, "scl": {"edges": 48},
+                    "edge_counts_approximate": True}
+
+    monkeypatch.setattr("benchos.dashboard.candidate_ports", lambda: ["/dev/fake"])
+    monkeypatch.setattr("benchos.dashboard.BenchClient", FakeClient)
+    result = DashboardState().bus_sample("/dev/fake", 1000)
+    assert result["scl"]["edges"] == 48
+    assert result["source"] == "s3_physical"
+    assert result["decoded_transactions"] is False
+
+
 def test_dashboard_serves_assets_and_snapshot_without_hardware(monkeypatch):
     state = DashboardState()
     try:
@@ -147,6 +170,9 @@ def test_dashboard_serves_assets_and_snapshot_without_hardware(monkeypatch):
         assert blocked.value.code == 400
         with pytest.raises(HTTPError) as blocked:
             urlopen(base + "/api/probes?lab_port=/dev/not-a-device")
+        assert blocked.value.code == 400
+        with pytest.raises(HTTPError) as blocked:
+            urlopen(base + "/api/bus?lab_port=/dev/not-a-device")
         assert blocked.value.code == 400
         declaration_body = json.dumps({"P1": {"state": "connected", "net": "LIGHT_SENSE"},
                                        "P2": {"state": "connected", "net": "MPU_VCC"}}).encode()

@@ -55,6 +55,12 @@ not mocked values.
 | Generic dashboard software checkpoint, 2026-09-26 | 34 host tests passed with loopback access; JavaScript syntax and Git whitespace checks passed |
 | Generic dashboard browser preview | Illustrative overhead map loaded current P1/P2 net labels and target range from the harness; preview readings stayed labeled as sample data |
 | Current-design source inventory | Listed S3 source, harness, and only the declared IMU DUT source files; unrelated demo sketches were excluded |
+| USB role identification after port renumbering | Read-only esptool identified `/dev/cu.usbmodem1101` as ESP32-S3 (USB serial `94:A9:90:DB:BA:64`) and `/dev/cu.usbmodem5` as ESP32-C6 (`A0:85:E3:DA:BD:80`) |
+| S3 bus-monitor firmware upload | Arduino CLI wrote the new application but returned a serial-stream error during `--verify`; after reset, live `HELP` listed `MEASURE_BUS` and P1/P2 still measured 2.538 V / 3.227 V. Runtime verified; binary readback was not verified. |
+| New IO8/IO9 wiring, first read-only test | User connected each input through a separate 10 kΩ series resistor to MPU SDA/SCL. S3 reported both lines HIGH and 0 edges in 1 s and 2 s windows; physical transition capture remains **unvalidated**. |
+| Concurrent C6 behavior | C6 reported `WHO_AM_I=0x70` and about 1.088 g while S3 bus inputs counted zero edges. This shows the DUT still communicates with its MPU, but does not identify why the sense inputs were static. |
+| Live generic dashboard API and browser | Auto-selected boards by stable USB serial; API returned P1 2.548 V, P2 3.220 V, S3 bus HIGH/HIGH with zero edges, and real `IMU_RAW`/`IMU_ACCEL_G` lines. Browser showed those as live physical/serial evidence with bus result marked inconclusive. |
+| Host tests after live bus dashboard | 38 passed with local loopback access |
 
 The resistor divider is nominally 1:2. These values show a working physical
 measurement loop, but the ADC and resistor tolerances do not make it a
@@ -80,7 +86,7 @@ available via `./scripts/python.sh -m benchos.dashboard` when started; do not
 assume the previous process is still running. `read_imu_stream` returns the
 C6's claim rather than physical proof from P1.
 
-The generic dashboard redesign did not involve a new physical acceptance
-measurement. Its paired-probe API was tested with a mock S3 client. The
-read-only S3 bus-activity monitor is compiled and gated in the host but has
-not been flashed, wired, or physically validated.
+The generic dashboard now has new live physical P1/P2 and bus-input samples.
+The IO8/IO9 path is wired and its static HIGH state was observed, but its edge
+capture has not passed an acceptance test. The original read-only bus monitor
+does not decode I²C traffic.

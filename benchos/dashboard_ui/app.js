@@ -1,7 +1,7 @@
 const el = (id) => document.getElementById(id);
 const names = ['P1', 'P2'];
-let harness = null, latestSample = null, inventory = null;
-let preview = false, auto = false, probeBusy = false, serialBusy = false, serialPaused = false;
+let harness = null, latestSample = null, latestBus = null, inventory = null;
+let preview = false, auto = true, probeBusy = false, busBusy = false, serialBusy = false, serialPaused = false;
 let serialSeq = 0, serialEvents = [], session = [];
 try {
   const saved = JSON.parse(localStorage.getItem('benchos-workspace-session-v2') || '[]');
@@ -54,6 +54,10 @@ function renderHarness() {
     el('declare-' + key + '-min').value = item.expected_min_v == null ? '' : item.expected_min_v;
     el('declare-' + key + '-max').value = item.expected_max_v == null ? '' : item.expected_max_v;
   }
+  const monitor = harness.bus_monitor || {};
+  setText('bus-sda-net', monitor.sda_net || 'UNDECLARED');
+  setText('bus-scl-net', monitor.scl_net || 'UNDECLARED');
+  if (monitor.state !== 'connected') setText('bus-status', 'Sense inputs ' + (monitor.state || 'undeclared') + ' · user declaration');
   renderAssessment();
 }
 async function loadHarness() {
@@ -70,14 +74,17 @@ async function loadPorts() {
     const data = await response.json();
     for (const kind of ['lab', 'dut']) {
       const select = el(kind + '-port');
+      const expected = kind === 'lab' ? harness && harness.lab && harness.lab.usb_serial_number : harness && harness.dut && harness.dut.usb_serial_number;
+      const enrolled = expected && data.ports.find(port => port.serial_number && port.serial_number.toLowerCase() === expected.toLowerCase());
       const previous = select.value;
       const preferred = localStorage.getItem('benchos-' + kind + '-port') || data[kind + '_port'] || '';
       select.replaceChildren(new Option(kind === 'lab' ? 'Choose S3 port' : 'Choose DUT port', ''));
-      for (const port of data.ports) select.add(new Option(port.device + ' · ' + (port.description || 'USB serial'), port.device));
-      select.value = [previous, preferred].find(value => value && [...select.options].some(option => option.value === value)) || '';
+      for (const port of data.ports) select.add(new Option(port.device + ' · ' + (port.serial_number || port.description || 'USB serial'), port.device));
+      select.value = expected ? (enrolled ? enrolled.device : '') : ([previous, preferred].find(value => value && [...select.options].some(option => option.value === value)) || '');
     }
-    setText('connection-label', data.ports.length ? data.ports.length + ' serial port' + (data.ports.length === 1 ? '' : 's') + ' found' : 'No serial ports found');
-    el('connection-dot').classList.toggle('active', data.ports.length > 0);
+    const count = ['lab', 'dut'].filter(kind => el(kind + '-port').value).length;
+    setText('connection-label', count === 2 ? 'S3 + DUT identified' : count === 1 ? 'One board identified' : 'Boards unavailable');
+    el('connection-dot').classList.toggle('active', count === 2);
   } catch (error) { setText('connection-label', 'Port discovery unavailable'); }
 }
 function previewSample() {
@@ -123,6 +130,8 @@ function renderAssessment() {
     }
     evidence.push('P1 and P2 were read in order, ' + (latestSample.elapsed_ms == null ? 'not simultaneously.' : Number(latestSample.elapsed_ms).toFixed(1) + ' ms apart overall.'));
   } else evidence.push('Waiting for an S3 probe measurement.');
+  if (latestBus) evidence.push((preview ? 'Preview bus sample: ' : 'S3 bus inputs: ') +
+    'SDA ' + latestBus.sda.edges + ' edges, SCL ' + latestBus.scl.edges + ' edges in ' + latestBus.window_ms + ' ms; transactions not decoded.');
   const recentError = [...serialEvents].reverse().find(item => /ERROR|FAIL/i.test(item.line));
   if (recentError) evidence.push('DUT serial reported: ' + recentError.line);
   const list = el('evidence-list'); list.replaceChildren();
@@ -175,6 +184,56 @@ async function sampleProbes() {
     if (port === el('lab-port').value) renderProbeSample(data);
   } catch (error) { setText('probe-status', 'Probe unavailable: ' + error.message); }
   finally { probeBusy = false; el('sample-probes').disabled = false; }
+}
+function previewBus() {
+  return {source:'preview', timestamp:new Date().toISOString(), window_ms:1000,
+    edge_counts_approximate:true, decoded_transactions:false,
+    sda:{start:'HIGH',end:'HIGH',edges:16}, scl:{start:'HIGH',end:'HIGH',edges:64}};
+}
+function renderBus(sample) {
+  latestBus = sample;
+  if (!sample) {
+    for (const line of ['sda', 'scl']) { setText('bus-' + line + '-edges', '—'); setText('bus-' + line + '-level', 'Awaiting sample'); }
+    setText('bus-title', 'No bus evidence yet.');
+    setText('bus-detail', 'Bench can count transitions on declared read-only inputs. Edge counts do not decode transactions or prove which wire is faulty.');
+    return;
+  }
+  for (const line of ['sda', 'scl']) {
+    const item = sample[line];
+    setText('bus-' + line + '-edges', item.edges);
+    setText('bus-' + line + '-level', item.start + ' → ' + item.end + ' · ' + sample.window_ms + ' ms');
+  }
+  const sda = sample.sda.edges, scl = sample.scl.edges;
+  if (sda === 0 && scl === 0) {
+    setText('bus-title', 'No transitions observed.');
+    setText('bus-detail', 'Both sense inputs were static during this window. The bus may be idle, the leads may miss the active rows, or capture may have missed traffic. Check the DUT output and repeat.');
+  } else if (scl === 0) {
+    setText('bus-title', 'Data line moved; clock stayed static.');
+    setText('bus-detail', 'Check the declared clock connection and sample while the DUT is communicating. This edge count does not identify a specific broken contact.');
+  } else if (sda === 0) {
+    setText('bus-title', 'Clock line moved; data stayed static.');
+    setText('bus-detail', 'Check the declared data connection and sample while the DUT is communicating. This edge count does not decode an address or ACK.');
+  } else {
+    setText('bus-title', 'Both lines show activity.');
+    setText('bus-detail', 'The S3 observed transitions on both declared inputs. Transaction contents and ACK/NACK remain unverified until timed capture is built.');
+  }
+  setText('bus-status', (sample.source === 'preview' ? 'PREVIEW · SAMPLE DATA' : 'S3 PHYSICAL · APPROXIMATE COUNT') + ' · ' + timeLabel(sample.timestamp));
+  renderAssessment();
+}
+async function sampleBus() {
+  if (busBusy) return;
+  if (preview) { renderBus(previewBus()); return; }
+  if (!harness || !harness.bus_monitor || harness.bus_monitor.state !== 'connected') return;
+  const port = el('lab-port').value;
+  if (!port) { setText('bus-status', 'Choose the identified S3 port.'); return; }
+  busBusy = true; el('sample-bus').disabled = true; setText('bus-status', 'Counting read-only transitions…');
+  try {
+    const response = await fetch('/api/bus?' + new URLSearchParams({lab_port:port,duration_ms:'1000'}), {cache:'no-store'});
+    const data = await response.json();
+    if (!response.ok) throw Error(data.error || 'Bus sample failed');
+    if (port === el('lab-port').value) renderBus(data);
+  } catch (error) { setText('bus-status', 'Bus unavailable: ' + error.message); }
+  finally { busBusy = false; el('sample-bus').disabled = false; }
 }
 function declarationPayload() {
   const result = {};
@@ -275,18 +334,21 @@ function togglePreview() {
   el('preview-toggle').setAttribute('aria-pressed', String(preview));
   setText('session-badge', preview ? 'PREVIEW DATA' : 'LIVE SESSION');
   el('probe-declaration-form').querySelector('button[type=submit]').disabled = preview;
-  serialSeq = 0; serialEvents = []; renderSerial(); resetProbeDisplay(); pollSerial();
+  serialSeq = 0; serialEvents = []; renderSerial(); resetProbeDisplay(); renderBus(null);
+  if (auto) { sampleProbes(); sampleBus(); }
+  pollSerial();
 }
 
 el('preview-toggle').addEventListener('click', togglePreview);
-el('refresh-button').addEventListener('click', async () => { await Promise.all([loadPorts(), loadHarness(), loadCode()]); pollSerial(); });
+el('refresh-button').addEventListener('click', async () => { await loadHarness(); await Promise.all([loadPorts(), loadCode()]); if (auto) { sampleProbes(); sampleBus(); } pollSerial(); });
 for (const kind of ['lab', 'dut']) el(kind + '-port').addEventListener('change', event => {
   localStorage.setItem('benchos-' + kind + '-port', event.target.value);
   if (kind === 'dut') { serialSeq = 0; serialEvents = []; renderSerial(); pollSerial(); }
-  if (kind === 'lab') resetProbeDisplay();
+  if (kind === 'lab') { resetProbeDisplay(); renderBus(null); if (auto) { sampleProbes(); sampleBus(); } }
 });
 el('sample-probes').addEventListener('click', sampleProbes);
-el('auto-sample').addEventListener('click', () => { auto = !auto; el('auto-sample').setAttribute('aria-pressed', String(auto)); setText('auto-sample', auto ? 'Auto: on' : 'Auto: off'); if (auto) sampleProbes(); });
+el('sample-bus').addEventListener('click', sampleBus);
+el('auto-sample').addEventListener('click', () => { auto = !auto; el('auto-sample').setAttribute('aria-pressed', String(auto)); setText('auto-sample', auto ? 'Live: on' : 'Live: off'); if (auto) { sampleProbes(); sampleBus(); } });
 el('export-probes').addEventListener('click', () => { if (latestSample) download('benchy-probes.json', latestSample); });
 el('probe-declaration-form').addEventListener('submit', saveDeclaration);
 for (const name of names) el('declare-' + name.toLowerCase() + '-net').addEventListener('input', event => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''); });
@@ -300,4 +362,10 @@ el('serial-filter').addEventListener('input', renderSerial);
 el('source-select').addEventListener('change', loadSource);
 el('source-refresh').addEventListener('click', loadCode);
 renderTimeline();
-Promise.all([loadPorts(), loadHarness(), loadCode()]).then(() => { renderAssessment(); pollSerial(); setInterval(() => { if (auto) sampleProbes(); }, 4500); setInterval(pollSerial, 2400); });
+loadHarness().then(() => Promise.all([loadPorts(), loadCode()])).then(() => {
+  renderAssessment(); sampleProbes(); sampleBus(); pollSerial();
+  setInterval(() => { if (auto) sampleProbes(); }, 5000);
+  setInterval(() => { if (auto) sampleBus(); }, 9000);
+  setInterval(pollSerial, 2400);
+  setInterval(loadPorts, 15000);
+});

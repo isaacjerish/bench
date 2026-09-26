@@ -87,7 +87,8 @@ def test_auto_discovery_rescans_after_connection_loss(monkeypatch):
     client.close()
 
 
-def test_bus_monitor_refuses_unwired_inputs():
+def test_bus_monitor_refuses_unwired_inputs(monkeypatch):
+    monkeypatch.setattr("benchos.client.describe_harness", lambda: {"bus_monitor": {"state": "pending"}})
     client = BenchClient("/dev/fake", startup_delay=0)
     with pytest.raises(BenchError, match="not declared connected"):
         client.measure_bus_activity()

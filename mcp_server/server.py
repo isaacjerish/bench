@@ -11,6 +11,7 @@ from benchos.light import compare_light
 from benchos.checks import run_suite
 from benchos.dashboard import read_imu_report
 from benchos.harness import describe_harness as read_harness
+from benchos.flash import plan_dut_flash as read_flash_plan
 from benchos.protocol import BenchError
 
 mcp = MCPServer("benchos", instructions=(
@@ -49,6 +50,15 @@ def describe_harness() -> dict[str, Any]:
     """Return declared P1/P2 wiring and voltage limits; declarations are not proof."""
     try:
         return {"ok": True, **read_harness()}
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool(structured_output=True)
+def plan_dut_flash() -> dict[str, Any]:
+    """Identify the declared DUT by stable USB serial and source path; does not flash."""
+    try:
+        return {"ok": True, **read_flash_plan()}
     except (OSError, ValueError, yaml.YAMLError) as exc:
         return {"ok": False, "error": str(exc)}
 

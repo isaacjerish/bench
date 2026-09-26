@@ -10,6 +10,7 @@ from .checks import run_suite
 from .client import BenchClient
 from .light import compare_light
 from .harness import describe_harness
+from .flash import plan_dut_flash
 from .ports import available_ports
 from .protocol import BenchError
 
@@ -20,7 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--verbose", action="store_true", help="Log serial TX/RX to stderr")
     parser.add_argument("--log", help="Append measurements and tests to a JSONL file")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("list", "ping", "info", "harness"):
+    for name in ("list", "ping", "info", "harness", "flash-plan"):
         sub.add_parser(name)
     for name in ("voltage", "digital"):
         sub.add_parser(name).add_argument("probe")
@@ -47,6 +48,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "harness":
         try:
             print(json.dumps(describe_harness(), indent=2, default=str))
+            return 0
+        except (OSError, ValueError) as exc:
+            print(f"Benchy error: {exc}", file=sys.stderr)
+            return 2
+    if args.command == "flash-plan":
+        try:
+            print(json.dumps(plan_dut_flash(), indent=2))
             return 0
         except (OSError, ValueError) as exc:
             print(f"Benchy error: {exc}", file=sys.stderr)

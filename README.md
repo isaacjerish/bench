@@ -147,14 +147,17 @@ from `harness/current.yaml`, not a camera or automatic wiring discovery. The
 page reads both S3 probes in order, displays their physical voltages and
 digital levels, and checks optional declared 0–3.3 V target ranges. The
 connection editor saves probe net names, states, and target ranges to the local
-harness file; saving a declaration does not verify or move a wire. The
+harness file; saving a declaration does not verify or move a wire. A separate
+read-only bus panel shows S3 IO8/IO9 idle levels and approximate SDA/SCL edge
+counts when those inputs are declared connected. Edge counts are not I²C
+transaction decode, and zero edges alone do not establish a bus fault. The
 **Preview** switch uses clearly marked sample readings without hardware;
 preview values are never reported as live measurements.
 
 The investigation panel shows evidence, uncertainty, a suggested next check,
 and a local timeline export. The read-only DUT serial monitor samples bounded
 windows with filtering, pause, clear, and export controls. There may be gaps
-while another tool uses the port. The code inspector shows the S3 source,
+while another tool uses the port. The code inspector shows the S3 and host source,
 harness, and source files listed under `source_files` in the current harness,
 along with hashes, the Git revision, and local modifications. The declared DUT
 firmware is a label; source on disk does not prove which binary was flashed.
@@ -166,16 +169,22 @@ From this repository, start it with the current serial ports (detect them again
 if either board was unplugged):
 
 ```sh
-./scripts/python.sh -m benchos.dashboard --lab-port /dev/cu.usbmodem1201 --dut-port /dev/cu.usbmodem1101
+./scripts/python.sh -m benchos.dashboard --lab-port /dev/cu.usbmodem1101 --dut-port /dev/cu.usbmodem5
 ```
 
 Open [http://127.0.0.1:8765](http://127.0.0.1:8765). You can also select the
-ports in the page. The dashboard releases the S3 serial port after each
+ports in the page. The current harness enrolls each board's USB serial number,
+so the page follows the S3 and DUT if macOS changes `/dev/cu` names. The
+dashboard starts in Live mode and releases the S3 serial port after each
 sample; BenchOS uses a short cross-process lock to share its serial ports with
 the Codex MCP server and CLI. The dashboard has no demo-specific circuit tabs.
 Named demo checks remain available through the CLI and MCP tools. Edit
 `harness/current.yaml` after changing the design's DUT metadata or source
 files; use the page's connection editor for P1/P2 declarations.
+
+`./scripts/python.sh -m benchos.cli flash-plan` resolves the declared DUT
+sketch and unique USB device without uploading anything. A generic agent
+build/flash action with postflash electrical checks is still under development.
 
 The visual direction draws on the [shadcn/ui dashboard examples](https://ui.shadcn.com/examples/dashboard),
 [Anthropic's frontend-design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md),

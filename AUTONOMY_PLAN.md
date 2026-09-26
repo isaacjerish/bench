@@ -28,7 +28,7 @@ photo may help propose hypotheses, but electrical readings remain the proof.
 | --- | --- | --- |
 | P1/P2 DC voltage, digital level, edge count, pulse width | Live 3.3 V/GND, LED, PWM, light, and MPU-supply readings in `VALIDATION.md` | More points, better input protection and calibration; current probes only accept known 0–3.3 V nodes and load the net |
 | C6 serial output and source view | Live MPU serial lines; local file hashes and Git revision | Reliable mapping from source/build to flashed binary; protocol-independent capture and parsing |
-| I²C observation | Staged S3 IO8/IO9 edge-count firmware compiles | Physical wiring/validation; edge count is not transaction decode |
+| I²C observation | S3 IO8/IO9 firmware booted and user wired separate 10 kΩ series sense branches; both inputs read HIGH with zero edges while the C6 continued reading its MPU | Inspect sense contacts and validate edge capture; edge count is not transaction decode |
 | DUT flashing | `scripts/flash_dut.sh` compiles and uploads one of four demos | Agent tool for an arbitrary declared sketch, board/port identity, bounded logs, postflash identity and regression test |
 | Physical checks | Named fixed demo profiles | User-defined expectations tied to net names, design version, and measured evidence |
 | Active tests, current, 5 V, unknown nodes | None | Separate protected hardware; existing S3 inputs must not be repurposed as outputs |
@@ -73,12 +73,14 @@ opened wires or firmware changes, never a deliberate supply short.
 
 ### 3. Observe two digital bus lines without driving them
 
-The user has a multimeter, **not** a USB logic analyzer. Start with the staged
-S3 IO8/IO9 read-only edge monitor after checking the exact pins, common
-ground, and bus voltage with the meter. This can report idle levels and
-approximate edge counts; it is **not** an I²C decoder and has not yet been
-physically validated. Use the known 3.3 V MPU bus only. Series resistors do
-not make an S3 input tolerant of 5 V or unknown voltages.
+The user has a multimeter, **not** a USB logic analyzer, and wants Benchy to
+avoid depending on the meter for routine diagnosis. The S3 P2 probe measured
+3.227 V at the MPU supply before connecting IO8/IO9. The user then connected
+IO8/IO9 through separate 10 kΩ series resistors to the known 3.3 V MPU bus.
+The monitor firmware booted, but initial 1 s and 2 s samples showed both
+inputs HIGH with zero edges despite live C6 MPU reports. The sense contacts or
+capture path need validation. This is **not** an I²C decoder. Series resistors
+do not make an S3 input tolerant of 5 V or unknown voltages.
 
 Next, investigate a bounded two-channel capture on the S3, using a peripheral
 such as RMT rather than relying on host USB timing. Decode START/STOP,
@@ -128,13 +130,14 @@ Unmapped nets and output-on-output connections are refused.
 
 ## First session with the hardware
 
-1. Confirm current S3/C6 USB identities and rerun P1/P2 rail checks; ports may
-   have changed. Do not assume the breadboard matches a prior session.
-2. S3 IO8/IO9, spare 10 kΩ resistors, and a multimeter are available. Confirm
-   the exact S3 pin labels and the meter's DC voltage mode.
-3. Check MPU VCC, SDA, and SCL against shared ground with the meter, then wire
-   the two S3 read-only inputs only to confirmed 3.3 V bus lines. Keep P1/P2
-   on their existing nodes until that plan is checked.
+1. USB identities were confirmed by chip type: S3 `94:A9:90:DB:BA:64`, C6
+   `A0:85:E3:DA:BD:80`. The current `/dev/cu` ports are in `HANDOFF.md`.
+2. The S3 now boots bus-monitor firmware and the user has connected IO8/IO9.
+   When they return, inspect the two series-resistor contact rows and repeat
+   a 1 s activity sample while the C6 reports MPU data.
+3. Keep P1/P2 on their present nodes. Do not use the meter as an ongoing
+   Benchy dependency; a reference meter is optional for calibrating future
+   protected voltage ranges.
 4. In parallel, implement phase 1 without wiring changes; it yields the
    largest immediate gain in agent autonomy.
 

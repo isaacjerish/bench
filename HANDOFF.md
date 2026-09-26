@@ -26,8 +26,11 @@ real hardware results. The key directories are:
 
 ## Current physical state (2026-09-26, US Eastern)
 
-- S3 lab controller: `/dev/cu.usbmodem1201` on the original Mac.
-- C6 DUT: `/dev/cu.usbmodem1101` on the original Mac. These port names can change.
+- S3 lab controller: `/dev/cu.usbmodem1101` at the latest check, USB serial
+  `94:A9:90:DB:BA:64` (chip identified as ESP32-S3).
+- C6 DUT: `/dev/cu.usbmodem5` at the latest check, USB serial
+  `A0:85:E3:DA:BD:80` (chip identified as ESP32-C6). Port names have changed
+  before; the dashboard now selects by these declared stable identities.
 - S3 GPIO1 measures divider midpoint M. Two 10 kΩ resistors connect test row T
   to M to GND. S3 GPIO2 directly observes T. S3 and C6 GND share a rail.
 - A second input probe P2 is wired on separate rows U (tip) and N (midpoint):
@@ -113,11 +116,21 @@ real hardware results. The key directories are:
   This generic interface and paired-probe HTTP endpoint have host tests and
   a browser preview check; no new physical acceptance run was performed for
   this redesign. The earlier physical measurements above remain the evidence.
-- A read-only two-line bus-activity monitor is implemented in the S3 source
-  for IO8/IO9 and exposed by CLI/MCP, but it has **not** been flashed, wired,
-  or physically validated. `harness/current.yaml` keeps it `pending`, and the
-  host refuses to run it until the wiring declaration is updated. Do not cite
-  it as a current Benchy capability.
+- The S3 now runs the bus-activity firmware; live `HELP` lists `MEASURE_BUS`,
+  and P1/P2 continued reading normally after upload. The user attached IO8
+  through a 10 kΩ series resistor to MPU SDA and IO9 through another 10 kΩ
+  resistor to SCL. The harness records this **user-declared** wiring. Initial
+  1 s and 2 s samples returned HIGH/HIGH with zero edges, while the C6 still
+  reported live MPU readings. This does not validate transition capture or
+  prove a bus fault; the sense rows and capture path need checking when the
+  user returns. Arduino CLI reported a serial-stream verification error after
+  writing the image; the subsequent live command and probe checks prove that
+  the new firmware booted, but do not prove binary readback verification.
+- The dashboard now opens in Live mode, selects the S3 and C6 by USB serial
+  identity, and shows P1/P2, read-only bus activity, sampled C6 serial output,
+  and current local source. Live APIs returned P1 2.548 V, P2 3.220 V,
+  SDA/SCL zero counted edges, and `IMU_RAW`/`IMU_ACCEL_G` lines on the current
+  wiring. The bus panel explicitly labels zero edges inconclusive.
 
 ## What Benchy can diagnose today
 
@@ -198,8 +211,10 @@ Run in the repository directory:
 ```sh
 ./scripts/detect_boards.sh
 ./scripts/python.sh -m benchos.cli harness
-./scripts/python.sh -m benchos.cli --port /dev/cu.usbmodem1201 pair-voltage
-./scripts/python.sh -m benchos.cli --port /dev/cu.usbmodem1201 test physical_tests/imu_vcc.yaml
+./scripts/python.sh -m benchos.cli --port /dev/cu.usbmodem1101 pair-voltage
+./scripts/python.sh -m benchos.cli --port /dev/cu.usbmodem1101 test physical_tests/imu_vcc.yaml
+./scripts/python.sh -m benchos.cli --port /dev/cu.usbmodem1101 bus-activity --duration-ms 1000
+./scripts/python.sh -m benchos.cli flash-plan
 ./scripts/python.sh -m pytest -q
 ```
 
@@ -208,7 +223,7 @@ or `read_imu_stream` MCP tool for its output. Reflash `light_sensor_demo`
 before running `light-compare` again. To open the dashboard:
 
 ```sh
-./scripts/python.sh -m benchos.dashboard --lab-port /dev/cu.usbmodem1201 --dut-port /dev/cu.usbmodem1101
+./scripts/python.sh -m benchos.dashboard --lab-port /dev/cu.usbmodem1101 --dut-port /dev/cu.usbmodem5
 ```
 
 Open `http://127.0.0.1:8765/`. Detect ports again if they have changed. The
@@ -221,8 +236,8 @@ its additional 10 kΩ pull-down from T, remove C6 GPIO1 from T, then connect
 C6 GPIO20 to T. Confirm the SG90 supply and wiring before attaching the motor:
 
 ```sh
-./scripts/flash_dut.sh servo_demo /dev/cu.usbmodem1101
-./scripts/physical_check.sh servo_signal /dev/cu.usbmodem1201
+./scripts/flash_dut.sh servo_demo /dev/cu.usbmodem5
+./scripts/physical_check.sh servo_signal /dev/cu.usbmodem1101
 ```
 
 `dut_examples/servo_demo/config.h` has `DEMO_FAULT=0` and `DEMO_SWEEP=false`.
@@ -250,11 +265,11 @@ and are not included in Git.
 
 ## Remaining work
 
-1. When hardware work resumes, choose a safe high-impedance interface for
-   S3 IO8/IO9, wire it to the MPU I²C bus, flash the staged S3 bus-monitor
-   firmware, and record physical validation. The staged monitor is compiled
-   only, not a demonstrated capability. The current 10 kΩ/10 kΩ probes load
-   the bus and must not be assumed suitable for SDA/SCL.
+1. When hardware work resumes, inspect the IO8/IO9 series-resistor contacts
+   and confirm they land on the actual SDA/SCL rows. The S3 currently counts
+   zero edges despite healthy C6 MPU output, so transition capture remains
+   unvalidated. The P1/P2 10 kΩ/10 kΩ probes load the bus and must not be
+   assumed suitable for SDA/SCL.
 2. For a new design, update the harness's DUT metadata and source-file list,
    verify each probe connection by hand, and add bounded physical test
    expectations. The GUI does not infer connectivity or flashed code.

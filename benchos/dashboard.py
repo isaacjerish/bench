@@ -30,8 +30,10 @@ from .serial_lock import SerialPortLock
 
 MODES = {"light", "led", "servo", "imu"}
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BASE_SOURCE_FILES = ("lab_controller/lab_controller.ino", "lab_controller/config.h",
-                     "harness/current.yaml")
+BASE_SOURCE_FILES = ("harness/current.yaml", "lab_controller/lab_controller.ino",
+                     "lab_controller/config.h", "benchos/client.py",
+                     "benchos/dashboard.py", "benchos/dashboard_ui/app.js",
+                     "mcp_server/server.py")
 IMU_LINE = re.compile(r"IMU_ACCEL_G x=(-?\d+\.\d+) y=(-?\d+\.\d+) z=(-?\d+\.\d+)(?: id=0x([0-9A-Fa-f]{2}))?\Z")
 WHO_LINE = re.compile(r"IMU_FOUND addr=0x([0-9A-Fa-f]{2}) who_am_i=0x([0-9A-Fa-f]{2})\Z")
 ASSETS = {"/": ("index.html", "text/html; charset=utf-8"),
@@ -52,7 +54,7 @@ def viewable_source_files() -> tuple[str, ...]:
         relative = Path(name)
         if (relative.is_absolute() or ".." in relative.parts
                 or any(part.startswith(".") for part in relative.parts)
-                or relative.suffix.lower() not in {".ino", ".h", ".cpp", ".c", ".py", ".yaml", ".md"}):
+                or relative.suffix.lower() not in {".ino", ".h", ".cpp", ".c", ".py", ".js", ".ts", ".yaml", ".md"}):
             continue
         candidate = (REPO_ROOT / relative).resolve()
         if name not in names and candidate.is_relative_to(REPO_ROOT) and candidate.is_file():
@@ -247,6 +249,17 @@ class DashboardState:
         pair["voltage_limit_v"] = 3.3
         return pair
 
+    def bus_sample(self, port: str, duration_ms: int) -> dict:
+        if port not in set(candidate_ports()):
+            raise ValueError("S3 port is not currently available")
+        if isinstance(duration_ms, bool) or not 100 <= duration_ms <= 2000:
+            raise ValueError("Bus sample window must be 100–2000 ms")
+        with self._lock:
+            with BenchClient(port, timeout=4.0) as client:
+                result = client.measure_bus_activity(duration_ms)
+        return {**result, "timestamp": datetime.now(timezone.utc).isoformat(),
+                "source": "s3_physical", "decoded_transactions": False}
+
     def close(self) -> None:
         pass
 
@@ -331,6 +344,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
             port = parse_qs(route.query).get("lab_port", [""])[0]
             try:
                 self._json(self.server.state.probe_sample(port))
+            except ValueError as exc:
+                self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            except (BenchError, OSError) as exc:
+                self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+        if route.path == "/api/bus":
+            query = parse_qs(route.query)
+            port = query.get("lab_port", [""])[0]
+            try:
+                duration_ms = int(query.get("duration_ms", ["1000"])[0])
+                self._json(self.server.state.bus_sample(port, duration_ms))
             except ValueError as exc:
                 self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             except (BenchError, OSError) as exc:
