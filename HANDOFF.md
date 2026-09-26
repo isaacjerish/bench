@@ -1,5 +1,43 @@
 # Benchy handoff
 
+## Active: ParcelGuard wiring batch issued (2026-09-26)
+
+User is back and requested the final quick demo. The complete clean wiring
+batch was delivered in chat and is in `PARCEL_GUARD_SETUP.md`: light L/LS,
+water W/WS, and alarm A/AS each have a shared 6.8 kΩ ADC/digital tap.
+Await **“ParcelGuard wired.”** No need to request availability of more parts.
+
+- Current harness now selects `parcel_guard` with P1/P2/P3 and D1/D2/D3
+  **pending**. Prior map is preserved in
+  `harness/profiles/plant_sentinel_legacy.yaml`. Keep pending until confirmed.
+- S3 series build requires `-DBENCHY_PROFILE_SERIES=1`; INFO v0.3 identifies
+  `series-taps-v1`. Host refuses readings if that required profile is missing
+  or different. Default S3 compilation retains the legacy divider map.
+- S3 new mapping: P1 ADC1/digital8, P2 ADC4/digital9, P3 ADC6/digital10;
+  all ADC scales 1. The series build counts only D1–D3 so unused floating
+  inputs do not consume interrupts. All measurement pins remain inputs.
+- C6 `dut_examples/parcel_guard` uses IO1 light, IO2 water, IO20 LED. Serial
+  reports run in a separate task, while sensing and 2 Hz LED timing run in
+  loop(). It reports every 500 ms, with light/water hysteresis. Fault 0 is
+  healthy, 1 is false-zero water, 2 disables the LED drive, 3 makes it 10 Hz.
+  Initial light thresholds: open 1.4 V / closed 0.9 V; water wet 0.5 V /
+  dry 0.3 V. These need the rebuilt circuit's physical baseline.
+- Both sketches compiled before upload. Build directories under workspace
+  `work/parcel-s3` and `work/parcel-c6`. No new firmware uploaded yet.
+- Dashboard supports connected digital taps without requiring an I²C bus;
+  ParcelGuard hides the unrelated bus panel and offers “Sample taps.”
+- Demo script: `PARCEL_GUARD_DEMO.md`. Main exercise uses a disclosed 10 Hz
+  alarm fault, then repair to 2 Hz and physical verification. Optional water
+  false-zero exercise compares C6 report with S3 P2 while the comb is wet.
+- After confirmation: stop dashboard polling for uploads, identify USB serials,
+  upload S3 with verification, activate connected declarations, then flash C6.
+  Check physical light/water readings and P3 2 Hz while uncovered. Ask for the
+  combined dark/dry → bright → dark/wet user action batch and visible LED check.
+  Do not declare the rebuilt demo finished before those tests pass.
+- Tests now read a private copy of the legacy fixture, independent of the
+  user's current map. Explicit ParcelGuard profile tests verify pending state
+  and rejection of incompatible S3 firmware.
+
 ## Latest work: website while user is AFK (2026-09-26)
 
 - Follow-up: **Save new capture** now collects fresh server-side physical
@@ -51,7 +89,7 @@
   before restarting. Live sampling was restored after the browser check.
 - Untracked `video/node_modules/` belongs to separate video work; do not stage it.
 
-## Active direction: clean ParcelGuard rebuild
+## Earlier plan: clean ParcelGuard rebuild (superseded by batch above)
 
 User requested a clean, simpler test project for a quick friends demo, with
 Benchy permanently observing every used DUT GPIO. Stop the earlier LED repair

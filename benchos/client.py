@@ -47,6 +47,7 @@ class BenchClient:
         candidates = [self._requested_port] if self._requested_port else ports.candidate_ports()
         if not candidates:
             raise BenchError("No serial ports found. Connect the ESP32-S3 using a data USB cable.")
+        expected_profile = describe_harness().get("lab", {}).get("required_profile")
         failures: list[str] = []
         for candidate in candidates:
             try:
@@ -60,6 +61,13 @@ class BenchClient:
                 response = self._exchange("PING")
                 if response["kind"] != "pong":
                     raise BenchProtocolError(f"{candidate} did not answer PING")
+                if expected_profile:
+                    identity = self._exchange("INFO")
+                    if identity.get("profile") != expected_profile:
+                        raise BenchProtocolError(
+                            f"Lab firmware profile mismatch: expected {expected_profile}, "
+                            f"received {identity.get('profile', 'unidentified legacy firmware')}; "
+                            "flash the matching S3 profile before interpreting voltages")
                 self.port = candidate
                 if self.verbose:
                     LOGGER.info("Connected to BenchOS on %s", candidate)

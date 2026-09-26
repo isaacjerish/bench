@@ -131,8 +131,8 @@ void processLine(char *command) {
     return;
   }
   if (strcmp(verb, "INFO") == 0 && !probeName) {
-    Serial.printf("OK INFO BenchOS-S3 v0.2 PROBES %u ADC_SAMPLES %u\n",
-                  static_cast<unsigned>(PROBE_COUNT), ADC_SAMPLES);
+    Serial.printf("OK INFO BenchOS-S3 v0.3 PROBES %u ADC_SAMPLES %u PROFILE %s\n",
+                  static_cast<unsigned>(PROBE_COUNT), ADC_SAMPLES, LAB_PROFILE);
     return;
   }
   if (strcmp(verb, "MEASURE_BUS") == 0 || strcmp(verb, "MEASURE_TAPS") == 0) {

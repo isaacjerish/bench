@@ -1,0 +1,9 @@
+name: parcel_alarm_drive
+expected_nets:
+  P3: ALARM_DRIVE
+checks:
+  - type: frequency_range
+    probe: P3
+    minimum: 1.5
+    maximum: 2.5
+    duration_ms: 2000

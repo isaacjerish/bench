@@ -14,11 +14,25 @@ struct ProbeConfig {
   float adcScale;
 };
 
+// Compile with -DBENCHY_PROFILE_SERIES=1 for the clean series-only harness.
+#ifndef BENCHY_PROFILE_SERIES
+#define BENCHY_PROFILE_SERIES 0
+#endif
+#if BENCHY_PROFILE_SERIES
+static constexpr char LAB_PROFILE[] = "series-taps-v1";
+static const ProbeConfig PROBES[] = {
+    {"P1", 1, 8, 1.0f},
+    {"P2", 4, 9, 1.0f},
+    {"P3", 6, 10, 1.0f},
+};
+#else
+static constexpr char LAB_PROFILE[] = "legacy-dividers-v1";
 static const ProbeConfig PROBES[] = {
     {"P1", 1, 2, 2.0f},
     {"P2", 4, 5, 2.0f},
     {"P3", 6, 7, 1.0f},
 };
+#endif
 static constexpr size_t PROBE_COUNT = sizeof(PROBES) / sizeof(PROBES[0]);
 // Dedicated read-only logic inputs. Wire only after confirming these pins are
 // exposed and the observed bus is 0–3.3 V; these pins are not 5 V tolerant.
@@ -27,7 +41,10 @@ static constexpr uint8_t BUS_SCL_GPIO = 9;
 struct DigitalTapConfig { const char *name; uint8_t pin; };
 // Passive 0–3.3 V taps. No pullups, pulldowns, or drive mode are enabled.
 static const DigitalTapConfig DIGITAL_TAPS[] = {
-    {"D1", 8}, {"D2", 9}, {"D3", 10}, {"D4", 11}, {"D5", 12},
+    {"D1", 8}, {"D2", 9}, {"D3", 10},
+#if !BENCHY_PROFILE_SERIES
+    {"D4", 11}, {"D5", 12},
+#endif
 };
 static constexpr size_t DIGITAL_TAP_COUNT = sizeof(DIGITAL_TAPS) / sizeof(DIGITAL_TAPS[0]);
 static constexpr uint32_t SERIAL_BAUD = 115200;

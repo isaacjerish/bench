@@ -115,6 +115,7 @@ function renderHarness() {
     el('declare-' + key + '-max').value = item.expected_max_v == null ? '' : item.expected_max_v;
   }
   const monitor = harness.bus_monitor || {};
+  el('bus').hidden = monitor.state !== 'connected';
   setText('bus-sda-net', monitor.sda_net || 'UNDECLARED');
   setText('bus-scl-net', monitor.scl_net || 'UNDECLARED');
   if (monitor.state !== 'connected') setText('bus-status', 'Sense inputs ' + (monitor.state || 'undeclared') + ' · user declaration');
@@ -387,24 +388,25 @@ function renderTaps(sample) {
 async function sampleBus() {
   if (busBusy || captureBusy) return;
   if (preview) { renderBus(previewBus()); return; }
-  if (!harness || !harness.bus_monitor || harness.bus_monitor.state !== 'connected') return;
+  const hasTaps = harness && Object.values(harness.digital_taps || {}).some(tap => tap.state === 'connected');
+  if (!hasTaps && (!harness || !harness.bus_monitor || harness.bus_monitor.state !== 'connected')) return;
   const port = el('lab-port').value;
   if (!port) { setText('bus-status', 'Choose the identified S3 port.'); return; }
-  busBusy = true; el('sample-bus').disabled = true; setText('bus-status', 'Counting read-only transitions…');
+  busBusy = true; el('sample-bus').disabled = true; el('sample-taps').disabled = true; setText('bus-status', 'Counting read-only transitions…');
+  setText('digital-tap-status', 'Counting read-only transitions…');
   try {
-    const hasTaps = harness.digital_taps && Object.keys(harness.digital_taps).length > 0;
     const response = await fetch((hasTaps ? '/api/taps?' : '/api/bus?') + new URLSearchParams({lab_port:port,dut_port:el('dut-port').value,duration_ms:'1000'}), {cache:'no-store'});
     const data = await response.json();
     if (!response.ok) throw Error(data.error || 'Bus sample failed');
     if (port === el('lab-port').value && !preview) {
       if (hasTaps) {
         renderTaps(data);
-        if (data.taps.D1 && data.taps.D1.usable_for_diagnosis && data.taps.D2 && data.taps.D2.usable_for_diagnosis)
+        if (harness.bus_monitor.state === 'connected' && data.taps.D1 && data.taps.D1.usable_for_diagnosis && data.taps.D2 && data.taps.D2.usable_for_diagnosis)
           renderBus({...data, sda:data.taps.D1, scl:data.taps.D2});
       } else renderBus(data);
     }
-  } catch (error) { setText('bus-status', 'Bus unavailable: ' + error.message); }
-  finally { busBusy = false; el('sample-bus').disabled = false; }
+  } catch (error) { setText('bus-status', 'Bus unavailable: ' + error.message); setText('digital-tap-status', 'Capture unavailable: ' + error.message); }
+  finally { busBusy = false; el('sample-bus').disabled = false; el('sample-taps').disabled = false; }
 }
 function declarationPayload() {
   const result = {};
@@ -567,6 +569,7 @@ for (const kind of ['lab', 'dut']) el(kind + '-port').addEventListener('change',
 });
 el('sample-probes').addEventListener('click', sampleProbes);
 el('sample-bus').addEventListener('click', sampleBus);
+el('sample-taps').addEventListener('click', sampleBus);
 el('export-taps').addEventListener('click', () => { if (latestTaps) download('benchy-digital-taps.json', latestTaps); });
 el('auto-sample').addEventListener('click', () => { auto = !auto; el('auto-sample').setAttribute('aria-pressed', String(auto)); setText('auto-sample', auto ? 'Live: on' : 'Live: off'); if (auto) { sampleProbes(); sampleBus(); } });
 el('export-probes').addEventListener('click', () => { if (latestSample) download('benchy-probes.json', latestSample); });

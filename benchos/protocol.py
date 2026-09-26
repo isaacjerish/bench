@@ -17,7 +17,7 @@ class BenchDeviceError(BenchError):
 
 
 PROBE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,15}\Z")
-INFO_RE = re.compile(r"([A-Za-z0-9_-]+)\s+(v\d+(?:\.\d+)*)\s+PROBES\s+(\d+)\s+ADC_SAMPLES\s+(\d+)\Z")
+INFO_RE = re.compile(r"([A-Za-z0-9_-]+)\s+(v\d+(?:\.\d+)*)\s+PROBES\s+(\d+)\s+ADC_SAMPLES\s+(\d+)(?:\s+PROFILE\s+([A-Za-z0-9_-]+))?\Z")
 
 
 def validate_probe(probe: str) -> str:
@@ -60,7 +60,8 @@ def parse_response(line: str) -> dict:
             raise BenchProtocolError(f"Malformed INFO response: {line!r}")
         return {"kind": "info", "device": match.group(1), "version": match.group(2),
                 "probe_count": _nonnegative_int(match.group(3)),
-                "adc_samples": _nonnegative_int(match.group(4)), "text": detail}
+                "adc_samples": _nonnegative_int(match.group(4)), "text": detail,
+                **({"profile": match.group(5)} if match.group(5) else {})}
     if kind == "HELP":
         return {"kind": "help", "text": " ".join(parts[2:])}
     if kind == "VOLTAGE" and len(parts) == 8 and parts[4] == "RAW" and parts[6] == "SAMPLES":

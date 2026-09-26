@@ -2,7 +2,7 @@
 
 import pytest
 
-from benchos.harness import HARNESS_FILE, describe_harness, update_probe_declarations
+from benchos.harness import describe_harness, update_probe_declarations
 
 
 def test_harness_separates_declared_from_measured():
@@ -15,9 +15,9 @@ def test_harness_separates_declared_from_measured():
     assert result["bus_monitor"]["state"] == "connected"
 
 
-def test_probe_declaration_updates_only_selected_fields(tmp_path):
+def test_probe_declaration_updates_only_selected_fields(tmp_path, harness_file):
     path = tmp_path / "current.yaml"
-    path.write_text(HARNESS_FILE.read_text())
+    path.write_text(harness_file.read_text())
     result = update_probe_declarations({"P1": {"state": "connected", "net": "NEW_SENSOR"},
                                         "P2": {"state": "disconnected", "net": "MPU_VCC"}}, path)
     assert result["probes"]["P1"]["net"] == "NEW_SENSOR"
@@ -27,9 +27,9 @@ def test_probe_declaration_updates_only_selected_fields(tmp_path):
     assert result["source"] == "user_declared"
 
 
-def test_invalid_declaration_cannot_change_file(tmp_path):
+def test_invalid_declaration_cannot_change_file(tmp_path, harness_file):
     path = tmp_path / "current.yaml"
-    original = HARNESS_FILE.read_text()
+    original = harness_file.read_text()
     path.write_text(original)
     with pytest.raises(ValueError, match="uppercase"):
         update_probe_declarations({"P1": {"state": "connected", "net": "bad label"},

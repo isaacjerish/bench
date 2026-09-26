@@ -1,55 +1,77 @@
-# ParcelGuard: proposed clean demo build
+# ParcelGuard — clean wiring batch
 
-Status: **planned, not wired or flashed**. User stepped away and requested
-website work before receiving the full wiring batch. Current firmware and
-`harness/current.yaml` still describe the earlier multi-sensor circuit.
+Status (2026-09-26): instructions issued; user confirmation and upload still
+pending. `harness/current.yaml` selects this design with pending connections.
+The S3 and C6 sketches compile. Do not mark the new circuit physically verified
+until the user confirms wiring and the independent checks pass.
 
-## Behavior
+## What it does
 
-A parcel box monitors light intrusion and water leaks. A covered light sensor
-represents a closed lid. Opening it or wetting only the water-sensor comb
-causes an LED alarm. Benchy observes all three used C6 GPIOs: light input IO1,
-water input IO2, and LED output IO20.
+A parcel box detects light entering through an open lid and water reaching its
+leak sensor. Either event flashes an LED at 2 Hz. Benchy observes all three
+used C6 signals permanently. Covering the photoresistor represents closing the
+lid; an opaque cup or small box works. No special enclosure is required.
 
-## Planned wiring
+## Parts
 
-Power off both USB boards before rebuilding. Use C6 3V3 for the sensor supply
-rail and a single shared ground rail connected to C6 and S3 GND. The S3 remains
-USB powered; do not join the boards' 3V3 outputs. Set the MPU aside for this
-smaller build. All measured nodes are known 0–3.3 V.
+- ESP32-C6 DUT and ESP32-S3 Benchy, each with its USB data cable
+- Photoresistor, water sensor labeled `+`, `-`, `S`, one LED
+- Three 6.8 kΩ resistors, one 10 kΩ resistor, one 220–330 Ω resistor
+- Breadboard and jumper wires
 
-| Signal row | Circuit | Permanent sensing branch |
-| --- | --- | --- |
-| L | Photoresistor from C6 3V3 to L; existing 10 kΩ from L to GND; C6 IO1 to L | L → 6.8 kΩ → separate LS row; S3 IO1 and IO8 both to LS |
-| W | Water `+` to C6 3V3, `-` to GND, `S` to W; C6 IO2 to W | W → 6.8 kΩ → separate WS row; S3 IO4 and IO9 both to WS |
-| A | C6 IO20 to A; A → 220–330 Ω → LED anode; LED cathode to GND | A → 6.8 kΩ → separate AS row; S3 IO6 and IO10 both to AS |
+## 1. Start clean, with both USB cables unplugged
 
-Use separate connected five-hole groups for L, LS, W, WS, A, AS, and each
-LED leg. No sense-row resistor goes to GND: these are series taps, **not
-voltage dividers**. Reuse the existing three 6.8 kΩ resistors, one 10 kΩ
-photoresistor resistor, and the LED's 220–330 Ω resistor. Mark the three
-signal rows so the sensor branch, DUT wire, and probe tap are easy to identify.
+Remove the previous MPU and all old probe wiring/dividers. Power the sensor
+rail from **C6 3V3**, and connect **C6 GND and S3 GND** to the same ground rail.
+Do not connect the two 3V3 outputs. Use one continuous section of the power
+rails; many breadboards split them halfway along their length.
 
-## Software prerequisites
+## 2. Build the three circuits and their permanent taps
 
-- Add and compile a named S3 series-tap profile: P1 ADC IO1/digital IO8,
-  P2 ADC IO4/digital IO9, P3 ADC IO6/digital IO10; ADC scale **1**, no divider.
-  Preserve the earlier profile for reproducing past tests.
-- Add C6 `parcel_guard` firmware with bounded light/water sampling and LED
-  alert timing. Confirm thresholds from a real dark/bright and dry/wet baseline.
-- Add a separate harness profile with all three new connections pending.
-  Set current wiring only after user confirmation and flash the correct S3
-  profile before interpreting readings.
-- Direct ESP32 ADC measurements can saturate near the top of the rail; do
-  not use this simple setup to claim calibrated supply measurements.
+Each named row below is one connected five-hole group (a–e), not both sides of
+the breadboard center gap. Suggested rows can be changed if clearly labeled.
 
-## Intended demo
+| Row/group | Wires and component legs in that connected group |
+| --- | --- |
+| **L / row 10** | C6 IO1, photoresistor leg, 10 kΩ resistor end, first 6.8 kΩ resistor end |
+| **LS / row 14** | Other end of L's 6.8 kΩ resistor, S3 IO1, S3 IO8 |
+| **W / row 20** | C6 IO2, water sensor S, second 6.8 kΩ resistor end |
+| **WS / row 24** | Other end of W's 6.8 kΩ resistor, S3 IO4, S3 IO9 |
+| **A / row 30** | C6 IO20, 220–330 Ω LED resistor end, third 6.8 kΩ resistor end |
+| **AS / row 34** | Other end of A's 6.8 kΩ resistor, S3 IO6, S3 IO10 |
 
-1. Normal dark/dry box: reports agree with independent readings.
-2. Light intrusion or leak: S3 observes the changed sensor voltage and LED
-   drive transitions; the user observes the actual LED.
-3. An intentionally false sensor report disagrees with the physical probe.
-4. Agent repairs the code, flashes the enrolled C6, and repeats the same check.
+Remaining component connections:
 
-Fixed taps cover these declared nodes. They do not discover arbitrary wiring,
-measure current, or prove that the LED emits light merely from an output pin.
+- Photoresistor other leg → C6 3V3 rail.
+- The 10 kΩ resistor other end → shared GND rail.
+- Water sensor `+` → C6 3V3; `-` → shared GND.
+- LED resistor other end → LED long leg/anode, in its own empty row.
+- LED short leg/flat side/cathode → shared GND; its legs must occupy different
+  connected groups.
+
+**No LS/WS/AS resistor goes to GND.** Each probe uses a single 6.8 kΩ series
+resistor, shared by its ADC and digital input. These are only for known
+0–3.3 V nodes; the resistor does not make an input safe for 5 V.
+
+Reconnect both USB cables. Leave the water sensor dry and photoresistor
+uncovered. Reply **“ParcelGuard wired”** so the agent can activate the confirmed
+connections, flash the matching S3 profile and C6 sketch, and measure them.
+
+## Firmware mapping
+
+| Probe | Analog pin | Digital pin / tap | ADC scale |
+| --- | --- | --- | --- |
+| P1 LIGHT_SENSE | S3 IO1 | S3 IO8 / D1 | 1 |
+| P2 WATER_SENSE | S3 IO4 | S3 IO9 / D2 | 1 |
+| P3 ALARM_DRIVE | S3 IO6 | S3 IO10 / D3 | 1 |
+
+D4/IO11 and D5/IO12 remain disconnected. This design has no I²C bus.
+The S3 requires `series-taps-v1`; the Python client rejects the old divider
+firmware. Compile S3 with `compiler.cpp.extra_flags=-DBENCHY_PROFILE_SERIES=1`.
+The unmodified default build retains `legacy-dividers-v1` for older wiring.
+
+ADC readings near the top of the rail may saturate. P3 voltage readings sample
+individual moments of the blinking signal; use its digital frequency/counts to
+check the blink rate. Measuring the output pin does not prove light emission.
+
+See `PARCEL_GUARD_DEMO.md` for the short demonstration and deliberate faults.

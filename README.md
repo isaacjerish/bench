@@ -15,6 +15,15 @@ Codex --local MCP--> Python Benchy --USB serial--> ESP32-S3 --P1/P2--> circuit
 Codex --Arduino CLI/USB---------------------------> ESP32-C6 --> servo signal
 ```
 
+## Current quick demo: ParcelGuard
+
+For the clean three-signal build, use [PARCEL_GUARD_SETUP.md](PARCEL_GUARD_SETUP.md)
+and [PARCEL_GUARD_DEMO.md](PARCEL_GUARD_DEMO.md). It combines light intrusion,
+water detection, and an LED alarm, with permanent S3 taps on every used C6
+signal. The current declaration is pending until the user confirms rebuilding.
+This requires the S3 **series-taps-v1** firmware profile; the host refuses old
+divider firmware. Prior wiring is retained in `harness/profiles/`.
+
 ## The first physical hookup: S3 only
 
 The default P1 probe uses **two S3 inputs** to observe one test point. Check
