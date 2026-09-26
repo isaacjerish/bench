@@ -11,5 +11,7 @@
 - [x] Build and physically verify a 2 Hz LED fallback without external power.
 - [x] Confirm the LED is visibly blinking and remeasure with it attached: 2.0 Hz PASS.
 - [x] Physically exercise all three fault variants; each produced a failing P1 reading.
+- [x] Prepare and compile a 3.3 V photoresistor DUT and C6/S3 voltage comparison.
+- [ ] Wire the photoresistor demo and validate normal and faulty readings.
 - [ ] Hook up the SG90 and verify physical motion after identifying the Elegoo
       power module input/output labels and power source.

@@ -2,12 +2,12 @@
 set -eu
 
 if [ "$#" -ne 2 ]; then
-  echo "Usage: $0 servo_demo|led_demo /dev/cu.usbmodemXXXX" >&2
+  echo "Usage: $0 servo_demo|led_demo|light_sensor_demo /dev/cu.usbmodemXXXX" >&2
   exit 2
 fi
 
 case "$1" in
-  servo_demo|led_demo) DEMO=$1 ;;
+  servo_demo|led_demo|light_sensor_demo) DEMO=$1 ;;
   *) echo "Unknown DUT demo: $1" >&2; exit 2 ;;
 esac
 

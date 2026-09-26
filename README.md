@@ -188,6 +188,18 @@ For repeated demos, the wrappers accept an explicit C6 or S3 port:
 The physical PASS requires 45–55 Hz, at least one transition, and a high pulse
 of 900–2100 µs. See [`AGENT_DEMO.md`](AGENT_DEMO.md) for the three fault modes.
 
+## Light sensor cross-check
+
+The optional [photoresistor demo](dut_examples/light_sensor_demo/README.md)
+uses a kit photoresistor and a spare 10 kΩ resistor, powered at 3.3 V from the
+C6. The C6 reports its ADC reading over USB; the S3 independently measures the
+same physical sensor node at P1. The CLI command `light-compare --dut-port
+<C6-port>` and MCP tool `compare_light_sensor(dut_port)` compare the two
+readings and can expose a firmware fault that falsely reports zero. Remove the
+LED branch and C6 GPIO20-to-T wire before wiring the photoresistor as shown
+in the demo README. A difference test needs enough light to bring the sensor
+node above 0.3 V. This demo is compiled but awaiting physical validation.
+
 ## Limits and common failures
 
 - The ESP32 ADC is approximate, and resistor tolerance adds error. It is a

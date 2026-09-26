@@ -5,6 +5,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from benchos import BenchClient
+from benchos.light import compare_light
 from benchos.protocol import BenchError
 
 mcp = MCPServer("benchos", instructions=(
@@ -50,6 +51,16 @@ def read_digital(probe: str) -> dict[str, Any]:
 def measure_frequency(probe: str, duration_ms: int = 250) -> dict[str, Any]:
     """Count physical rising edges locally; also report one high pulse width."""
     return _measure("measure_frequency", probe, duration_ms, timeout=5.0)
+
+
+@mcp.tool(structured_output=True)
+def compare_light_sensor(dut_port: str) -> dict[str, Any]:
+    """Compare C6-reported light voltage with the real voltage measured by S3 P1."""
+    try:
+        with BenchClient(timeout=3.0) as client:
+            return {"ok": True, **compare_light(client, dut_port)}
+    except (BenchError, OSError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 if __name__ == "__main__":

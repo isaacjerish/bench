@@ -3,9 +3,12 @@
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
 from .checks import run_suite
 from .client import BenchClient
+from .light import compare_light
 from .ports import available_ports
 from .protocol import BenchError
 
@@ -25,6 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
     frequency.add_argument("--duration-ms", type=int, default=1000)
     test = sub.add_parser("test")
     test.add_argument("file")
+    light = sub.add_parser("light-compare", help="Compare C6 light report with physical P1 voltage")
+    light.add_argument("--dut-port", required=True, help="C6 USB serial port")
+    light.add_argument("--tolerance-v", type=float, default=0.45)
+    light.add_argument("--min-physical-v", type=float, default=0.3)
     return parser
 
 
@@ -45,13 +52,21 @@ def main(argv: list[str] | None = None) -> int:
                 result = client.read_digital(args.probe)
             elif args.command == "frequency":
                 result = client.measure_frequency(args.probe, args.duration_ms)
+            elif args.command == "light-compare":
+                result = compare_light(client, args.dut_port,
+                                       tolerance_v=args.tolerance_v,
+                                       min_physical_v=args.min_physical_v)
+                if args.log:
+                    record = {"timestamp": datetime.now(timezone.utc).isoformat(), **result}
+                    with Path(args.log).open("a", encoding="utf-8") as stream:
+                        stream.write(json.dumps(record) + "\n")
             else:
                 result = run_suite(client, args.file, log_path=args.log)
     except (BenchError, OSError, ValueError, TypeError) as exc:
         print(f"BenchOS error: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(result, indent=2))
-    return 1 if args.command == "test" and not result["pass"] else 0
+    return 1 if args.command in ("test", "light-compare") and not result["pass"] else 0
 
 
 if __name__ == "__main__":

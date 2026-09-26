@@ -8,12 +8,13 @@ real hardware results. The key directories are:
 
 - `lab_controller/`: ESP32-S3 input-only measurement firmware; pins in `config.h`.
 - `benchos/`: Python serial client, CLI, response parsing, and physical checks.
-- `mcp_server/`: five local Codex MCP tools backed by the S3.
+- `mcp_server/`: local Codex MCP tools backed by the S3.
 - `dut_examples/servo_demo/`: ESP32-C6 servo PWM and three selectable faults.
 - `dut_examples/led_demo/`: currently flashed 2 Hz visible LED demo.
+- `dut_examples/light_sensor_demo/`: prepared photoresistor cross-check demo.
 - `physical_tests/`: YAML pass/fail checks.
 - `scripts/`: board detection, flashing, and test commands.
-- `tests/`: Python unit tests (12 passing).
+- `tests/`: Python unit tests.
 
 ## Current physical state (2026-09-25, US Eastern)
 
@@ -40,7 +41,9 @@ real hardware results. The key directories are:
 - All three deliberate faults were physically detected: wrong pin 0 Hz,
   stuck-low 0 Hz/0 V/LOW, wrong frequency 312 Hz. Repaired PWM passed.
 - LED firmware was restored after fault testing and remeasured at 2.0 Hz PASS.
-- Python tests: `./scripts/python.sh -m pytest -q` => 12 passed.
+- Python tests: run `./scripts/python.sh -m pytest -q` for the current count.
+- A photoresistor comparison demo is being added; check `VALIDATION.md` for
+  whether it has been physically tested before presenting it as validated.
 
 ## Fast commands on the original Mac
 
