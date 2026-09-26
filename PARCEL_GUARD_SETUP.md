@@ -1,9 +1,11 @@
 # ParcelGuard — clean wiring batch
 
-Status (2026-09-26): instructions issued; user confirmation and upload still
-pending. `harness/current.yaml` selects this design with pending connections.
-The S3 and C6 sketches compile. Do not mark the new circuit physically verified
-until the user confirms wiring and the independent checks pass.
+Status (2026-09-26): user reported wiring ready for checking; both boards have
+the matching firmware and the current connections are declared connected.
+Initial light readings agree (S3 2.700 V / C6 2.725 V) and the LED drive measures
+2.000 Hz. Covered light measured 0.686 V with LED drive 0 V / zero transitions;
+the user confirms the LED blinks in light and stops covered. The water-only
+alarm response still needs validation. These steps document the complete wiring.
 
 ## What it does
 

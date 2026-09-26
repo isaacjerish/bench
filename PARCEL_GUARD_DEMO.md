@@ -1,8 +1,10 @@
 # ParcelGuard demo: observe → diagnose → repair → verify
 
-Status: firmware compiles; this new wiring and demo sequence still require
-physical validation. Seeded faults are intentional exercises, not a claim that
-Benchy discovered an unknown fault unaided.
+Status: matching firmware is uploaded. Initial light readings agree and the
+LED drive passes at 2.000 Hz. Covered/dry reads 0.686 V light and alarm off;
+the user confirms visible on/off response. The water-only alarm response
+remains pending; the complete demo is not yet validated. Seeded faults are
+intentional exercises, not a claim of discovering an unknown fault unaided.
 
 ## Before showing friends
 

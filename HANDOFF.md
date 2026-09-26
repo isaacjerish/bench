@@ -1,6 +1,40 @@
 # Benchy handoff
 
-## Active: ParcelGuard wiring batch issued (2026-09-26)
+## Active: ParcelGuard uploaded; first electrical baseline passes (2026-09-26)
+
+User requested “check wiring” after the clean batch. Both enrolled USB boards
+were discovered and uploaded with verification. S3 now responds as v0.3,
+`series-taps-v1`; C6 emits `build=parcel-guard-v1`, fault 0. Port names swapped:
+S3 was `/dev/cu.usbmodem5`, C6 `/dev/cu.usbmodem1101`; always rediscover by serial.
+Current connections are declared connected, not automatically traced/proven.
+
+- Initial S3 light reading **2.700 V**, C6 report **2.725 V** (25 mV difference).
+- Water S3 **0.000 V**, C6 **0.002 V**. A zero baseline does not verify the
+  water sensor's power or response; the wet test is still required.
+- LED drive: **8 CHANGE edges / 2000 ms** and a separate **2.000 Hz** frequency
+  check (4 rising edges / 2 s), passing the 1.5–2.5 Hz suite. High ADC snapshot
+  was 3.159 V / raw 4095, at the ADC limit; do not interpret as an exact rail.
+- User confirms the LED blinks with light and stops covered (they corrected
+  their initial “keeps blinking” report). Covered/dry capture: S3 light
+  **0.686 V**, water **0 V**, LED drive **0 V**, zero alarm edges in 1 s;
+  DUT reports light roughly 0.700–0.792 V, `lid_open=0 wet=0 alert=0`.
+- First wet attempt was captured during movement: light **2.186 V**, water
+  **0.003 V**, then DUT water rose from 0.023 V to 0.834 V across later
+  messages. Do not treat those sequential observations as simultaneous or
+  claim water-alone activation: the DUT also reported `lid_open=1`.
+- Pending user action: put an opaque cover over the photoresistor that stays
+  in place, keep the comb wet, and reply “dark and wet” with LED state.
+  Measure stable water response and alarm drive next. No wiring moves.
+- Evidence: `validation_runs/2026-09-26-parcel-s3-upload.json`,
+  `2026-09-26-parcel-c6-upload.json`, `2026-09-26-parcel-baseline.json`,
+  `2026-09-26-parcel-covered-dry.json`, `2026-09-26-parcel-covered-wet.json`.
+  The first covered capture's human annotation was corrected with an audit
+  note; raw measurements and timestamps remain unchanged.
+- Uncommitted conditional-activity comparison work predates this wiring check;
+  it is not enabled in the harness yet. Finish and test before presenting it
+  as an operational diagnosis feature.
+
+## Previous preparation: ParcelGuard wiring batch issued (2026-09-26)
 
 User is back and requested the final quick demo. The complete clean wiring
 batch was delivered in chat and is in `PARCEL_GUARD_SETUP.md`: the photoresistor,

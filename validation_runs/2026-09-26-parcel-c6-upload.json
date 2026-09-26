@@ -1,0 +1,134 @@
+{
+  "source": "declared_sketch_and_usb_identity",
+  "timestamp": "2026-09-26T22:26:59.106023+00:00",
+  "run_dir": "/Users/isaacjerish/Documents/Codex/2026-09-25/i-am-partaking-in-hack-gt/work/flash-runs/dut-s5_e37_b",
+  "device": "/dev/cu.usbmodem1101",
+  "usb_serial_number": "A0:85:E3:DA:BD:80",
+  "sketch_path": "dut_examples/parcel_guard",
+  "fqbn": "esp32:esp32:esp32c6:CDCOnBoot=cdc",
+  "source_sha256": "427eec8be6780a0f00ceab9315c11e8ceb26ab1fae12d94616ac5558e6988d2c",
+  "git": {
+    "commit": "102008b128c0a8649fc35fe4daa9c15dfe46409e",
+    "sketch_dirty": false
+  },
+  "compile": {
+    "ok": true,
+    "exit_code": 0,
+    "log": "/Users/isaacjerish/Documents/Codex/2026-09-25/i-am-partaking-in-hack-gt/work/flash-runs/dut-s5_e37_b/compile.log",
+    "tail": "Sketch uses 288124 bytes (21%) of program storage space. Maximum is 1310720 bytes.\nGlobal variables use 15700 bytes (4%) of dynamic memory, leaving 311980 bytes for local variables. Maximum is 327680 bytes.\n\n"
+  },
+  "upload": {
+    "ok": true,
+    "exit_code": 0,
+    "log": "/Users/isaacjerish/Documents/Codex/2026-09-25/i-am-partaking-in-hack-gt/work/flash-runs/dut-s5_e37_b/upload.log",
+    "tail": "/i-am-partaking-in-hack-gt/work/flash-runs/dut-s5_e37_b/build/parcel_guard.ino.bootloader.bin' at 0x00000000...\nFlash will be erased from 0x00000000 to 0x00005fff...\nCompressed 20720 bytes to 13256...\n\nWriting at 0x00000000 [                              ]   0.0% 0/13256 bytes... \n\nWriting at 0x000050f0 [==============================] 100.0% 13256/13256 bytes... \nWrote 20720 bytes (13256 compressed) at 0x00000000 in 0.3 seconds (600.6 kbit/s).\nVerifying written data...\nHash of data verified.\n\nWriting '/Users/isaacjerish/Documents/Codex/2026-09-25/i-am-partaking-in-hack-gt/work/flash-runs/dut-s5_e37_b/build/parcel_guard.ino.partitions.bin' at 0x00008000...\nFlash will be erased from 0x00008000 to 0x00008fff...\nCompressed 3072 bytes to 146...\n\nWriting at 0x00008000 [                              ]   0.0% 0/146 bytes... \n\nWriting at 0x00008c00 [==============================] 100.0% 146/146 bytes... \nWrote 3072 bytes (146 compressed) at 0x00008000 in 0.0 seconds (614.9 kbit/s).\nVerifying written data...\nHash of data verified.\n\nWriting '/Users/isaacjerish/Documents/Codex/2026-09-25/i-am-partaking-in-hack-gt/work/arduino-data/packages/esp32/hardware/esp32/3.3.12/tools/partitions/boot_app0.bin' at 0x0000e000...\nFlash will be erased from 0x0000e000 to 0x0000ffff...\nCompressed 8192 bytes to 47...\n\nWriting at 0x0000e000 [                              ]   0.0% 0/47 bytes... \n\nWriting at 0x00010000 [==============================] 100.0% 47/47 bytes... \nWrote 8192 bytes (47 compressed) at 0x0000e000 in 0.1 seconds (993.5 kbit/s).\nVerifying written data...\nHash of data verified.\n\nWriting '/Users/isaacjerish/Documents/Codex/2026-09-25/i-am-partaking-in-hack-gt/work/flash-runs/dut-s5_e37_b/build/parcel_guard.ino.bin' at 0x00010000...\nFlash will be erased from 0x00010000 to 0x00056fff...\nCompressed 288272 bytes to 161084...\n\nWriting at 0x00010000 [                              ]   0.0% 0/161084 bytes... \n\nWriting at 0x0001c1d0 [==>                           ]  10.2% 16384/161084 bytes... \n\nWriting at 0x00024091 [=====>                        ]  20.3% 32768/161084 bytes... \n\nWriting at 0x0002a1d8 [========>                     ]  30.5% 49152/161084 bytes... \n\nWriting at 0x0003089c [===========>                  ]  40.7% 65536/161084 bytes... \n\nWriting at 0x000374fa [==============>               ]  50.9% 81920/161084 bytes... \n\nWriting at 0x0003d434 [=================>            ]  61.0% 98304/161084 bytes... \n\nWriting at 0x00043bf9 [====================>         ]  71.2% 114688/161084 bytes... \n\nWriting at 0x0004a6c7 [=======================>      ]  81.4% 131072/161084 bytes... \n\nWriting at 0x00050663 [==========================>   ]  91.5% 147456/161084 bytes... \n\nWriting at 0x00056610 [==============================] 100.0% 161084/161084 bytes... \nWrote 288272 bytes (161084 compressed) at 0x00010000 in 1.6 seconds (1399.2 kbit/s).\nVerifying written data...\nHash of data verified.\n\nHard resetting via RTS pin...\nNew upload port: /dev/cu.usbmodem1101 (serial)\n\n",
+    "status": "reported_success"
+  },
+  "postflash": {
+    "state": "pass",
+    "marker": {
+      "state": "observed",
+      "port": "/dev/cu.usbmodem1101",
+      "timestamp": "2026-09-26T22:27:27.362325+00:00",
+      "expected_marker": "build=parcel-guard-v1",
+      "line": "PARCEL build=parcel-guard-v1 uptime_ms=1500 light_mv=2725 water_mv=1 lid_open=1 wet=0 alert=1 fault=0",
+      "source": "dut_serial",
+      "binary_identity_verified": false
+    },
+    "telemetry": {
+      "lab_port": "/dev/cu.usbmodem5",
+      "dut_port": "/dev/cu.usbmodem1101",
+      "physical": {
+        "simultaneous": false,
+        "elapsed_ms": 27.3,
+        "wiring_source": "user_declared",
+        "readings": [
+          {
+            "timestamp": "2026-09-26T22:27:28.932238+00:00",
+            "declared_state": "connected",
+            "declared_net": "LIGHT_SENSE",
+            "kind": "voltage",
+            "probe": "P1",
+            "voltage_v": 2.7,
+            "raw": 3256,
+            "samples": 32
+          },
+          {
+            "timestamp": "2026-09-26T22:27:28.941467+00:00",
+            "declared_state": "connected",
+            "declared_net": "WATER_SENSE",
+            "kind": "voltage",
+            "probe": "P2",
+            "voltage_v": 0.0,
+            "raw": 0,
+            "samples": 32
+          },
+          {
+            "timestamp": "2026-09-26T22:27:28.959426+00:00",
+            "declared_state": "connected",
+            "declared_net": "ALARM_DRIVE",
+            "kind": "voltage",
+            "probe": "P3",
+            "voltage_v": 3.159,
+            "raw": 4095,
+            "samples": 32
+          }
+        ],
+        "digital_states": {
+          "P1": "HIGH",
+          "P2": "LOW",
+          "P3": "HIGH"
+        },
+        "timestamp": "2026-09-26T22:27:28.962418+00:00",
+        "source": "s3_physical",
+        "voltage_limit_v": 3.3
+      },
+      "serial_window_ms": 1200,
+      "state": "pass",
+      "source": "s3_physical_plus_dut_serial",
+      "checks": [
+        {
+          "probe": "P1",
+          "field": "light_mv",
+          "declared_net": "LIGHT_SENSE",
+          "physical_v": 2.7,
+          "dut_claim_v": 2.725,
+          "delta_v": 0.025,
+          "max_delta_v": 0.45,
+          "sample_age_s": 0.57,
+          "serial_timestamp": "2026-09-26T22:27:28.362308+00:00",
+          "pass": true
+        },
+        {
+          "probe": "P2",
+          "field": "water_mv",
+          "declared_net": "WATER_SENSE",
+          "physical_v": 0.0,
+          "dut_claim_v": 0.002,
+          "delta_v": 0.002,
+          "max_delta_v": 0.45,
+          "sample_age_s": 0.579,
+          "serial_timestamp": "2026-09-26T22:27:28.362308+00:00",
+          "pass": true
+        }
+      ],
+      "missing_checks": [],
+      "expected_checks": 2,
+      "serial_lines": [
+        "PARCEL build=parcel-guard-v1 uptime_ms=2500 light_mv=2725 water_mv=2 lid_open=1 wet=0 alert=1 fault=0"
+      ],
+      "scope": "Only declared probe nodes and fields; serial contents are DUT claims."
+    },
+    "probe_ranges": [],
+    "scope": "Declared marker, telemetry comparisons, and voltage ranges only; other behavior is unverified."
+  },
+  "artifact_sha256": {
+    "boot_app0.bin": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0",
+    "parcel_guard.ino.bin": "85519144af5917f632224275d9c374ded8d1bcadf73b7032b985290694bf1ef6",
+    "parcel_guard.ino.bootloader.bin": "a2ebc2b16ef67609d6bbbe542195b07f449c708943b5cf5307d4bef05e56d200",
+    "parcel_guard.ino.merged.bin": "a70b392f33a6c83155eeaed33b7e1e3a8af9335a617ee2d8f6a903824da6805c",
+    "parcel_guard.ino.partitions.bin": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1"
+  },
+  "flashed_firmware_verified": false,
+  "physical_circuit_verified": false
+}
