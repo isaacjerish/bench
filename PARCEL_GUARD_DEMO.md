@@ -2,8 +2,10 @@
 
 Status: matching firmware is uploaded. Initial light readings agree and the
 LED drive passes at 2.000 Hz. Covered/dry reads 0.686 V light and alarm off;
-the user confirms visible on/off response. The water-only alarm response
-remains pending; the complete demo is not yet validated. Seeded faults are
+the user confirms visible on/off response. Dark/wet measures 0.534 V light,
+0.965 V water and 4 alarm transitions/s, with user-confirmed blinking. Healthy
+wiring checks pass; the deliberate fault/repair sequence below still needs
+execution before calling the complete demo validated. Seeded faults are
 intentional exercises, not a claim of discovering an unknown fault unaided.
 
 ## Before showing friends

@@ -1,6 +1,6 @@
 # Benchy handoff
 
-## Active: ParcelGuard uploaded; first electrical baseline passes (2026-09-26)
+## Active: ParcelGuard wiring checks pass (2026-09-26)
 
 User requested “check wiring” after the clean batch. Both enrolled USB boards
 were discovered and uploaded with verification. S3 now responds as v0.3,
@@ -22,14 +22,23 @@ Current connections are declared connected, not automatically traced/proven.
   **0.003 V**, then DUT water rose from 0.023 V to 0.834 V across later
   messages. Do not treat those sequential observations as simultaneous or
   claim water-alone activation: the DUT also reported `lid_open=1`.
-- Pending user action: put an opaque cover over the photoresistor that stays
-  in place, keep the comb wet, and reply “dark and wet” with LED state.
-  Measure stable water response and alarm drive next. No wiring moves.
+- Stable dark/wet follow-up **passed**: S3 light **0.534 V**, water **0.965 V**;
+  C6 light 0.532–0.551 V and water 0.993–1.055 V, consistently reporting
+  `lid_open=0 wet=1 alert=1 fault=0`. Alarm tap counted **4 CHANGE edges in
+  1000 ms**, consistent with the previously measured 2 Hz drive. User confirms
+  visible LED blinking. Both independent sensor stimuli and LED behavior now
+  work without moving wiring. User was told they can wipe the comb dry.
+- Physical sensor/LED checks are complete for this wiring. The deliberate
+  fault → agent diagnosis → repair demonstration still needs execution; do
+  not call that sequence validated yet. No fault firmware was uploaded here.
 - Evidence: `validation_runs/2026-09-26-parcel-s3-upload.json`,
   `2026-09-26-parcel-c6-upload.json`, `2026-09-26-parcel-baseline.json`,
-  `2026-09-26-parcel-covered-dry.json`, `2026-09-26-parcel-covered-wet.json`.
+  `2026-09-26-parcel-covered-dry.json`, `2026-09-26-parcel-covered-wet.json`,
+  `2026-09-26-parcel-dark-wet-steady.json` (the decisive water-only capture).
   The first covered capture's human annotation was corrected with an audit
   note; raw measurements and timestamps remain unchanged.
+- Dashboard restarted and live browser refreshed with the new declarations.
+  Host verification: 15 targeted profile/capture/postflash tests passed.
 - Uncommitted conditional-activity comparison work predates this wiring check;
   it is not enabled in the harness yet. Finish and test before presenting it
   as an operational diagnosis feature.

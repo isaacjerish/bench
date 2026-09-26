@@ -4,8 +4,10 @@ Status (2026-09-26): user reported wiring ready for checking; both boards have
 the matching firmware and the current connections are declared connected.
 Initial light readings agree (S3 2.700 V / C6 2.725 V) and the LED drive measures
 2.000 Hz. Covered light measured 0.686 V with LED drive 0 V / zero transitions;
-the user confirms the LED blinks in light and stops covered. The water-only
-alarm response still needs validation. These steps document the complete wiring.
+the user confirms the LED blinks in light and stops covered. With the light
+still covered, wet water measured 0.965 V and the alarm resumed at 4 transitions/s;
+the user confirms visible blinking. These wiring checks pass. The deliberate
+fault/repair demonstration remains to be tested. Below is the complete wiring.
 
 ## What it does
 

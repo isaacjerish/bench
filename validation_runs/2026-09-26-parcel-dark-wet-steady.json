@@ -1,0 +1,405 @@
+{
+  "schema_version": 1,
+  "kind": "benchy_capture",
+  "source": "dashboard_instrument_capture",
+  "label": "Steady dark and wet — visible LED blinking",
+  "note": "User confirms dark, wet, blinking; asked to keep an opaque cover in place and the comb wet without changing wiring.",
+  "timestamp": "2026-09-26T22:32:27.392151+00:00",
+  "saved_at": "2026-09-26T22:32:31.599516+00:00",
+  "capture_ended_at": "2026-09-26T22:32:31.568520+00:00",
+  "simultaneous": false,
+  "lab_port": "/dev/cu.usbmodem5",
+  "dut_port": "/dev/cu.usbmodem1101",
+  "harness": {
+    "version": 1,
+    "declared_on": "2026-09-26",
+    "voltage_limit_v": 3.3,
+    "lab": {
+      "board": "ESP32-S3",
+      "usb_serial_number": "94:A9:90:DB:BA:64",
+      "required_profile": "series-taps-v1"
+    },
+    "dut": {
+      "board": "ESP32-C6",
+      "usb_serial_number": "A0:85:E3:DA:BD:80",
+      "firmware": "parcel_guard",
+      "sketch_path": "dut_examples/parcel_guard",
+      "fqbn": "esp32:esp32:esp32c6:CDCOnBoot=cdc"
+    },
+    "source_files": [
+      "dut_examples/parcel_guard/parcel_guard.ino",
+      "dut_examples/parcel_guard/config.h"
+    ],
+    "dut_pins": {
+      "IO1": {
+        "net": "LIGHT_SENSE",
+        "function": "Lid light input"
+      },
+      "IO2": {
+        "net": "WATER_SENSE",
+        "function": "Leak input"
+      },
+      "IO20": {
+        "net": "ALARM_DRIVE",
+        "function": "Alarm LED output"
+      }
+    },
+    "telemetry_checks": [
+      {
+        "probe": "P1",
+        "field": "light_mv",
+        "scale_to_v": 0.001,
+        "max_delta_v": 0.45
+      },
+      {
+        "probe": "P2",
+        "field": "water_mv",
+        "scale_to_v": 0.001,
+        "max_delta_v": 0.45
+      }
+    ],
+    "postflash": {
+      "serial_marker": "build=parcel-guard-v1",
+      "timeout_s": 8,
+      "check_telemetry": true
+    },
+    "probes": {
+      "P1": {
+        "state": "connected",
+        "net": "LIGHT_SENSE",
+        "tip": "Photoresistor leg connected to C6 IO1",
+        "adc": "S3 IO1 via shared 6.8k series tap",
+        "digital": "S3 IO8 at the free end of the photoresistor 6.8k resistor",
+        "note": "No divider; ADC scale 1"
+      },
+      "P2": {
+        "state": "connected",
+        "net": "WATER_SENSE",
+        "tip": "Water sensor S connected to C6 IO2",
+        "adc": "S3 IO4 via shared 6.8k series tap",
+        "digital": "S3 IO9 at the free end of the water-sensor 6.8k resistor",
+        "note": "No divider; ADC scale 1"
+      },
+      "P3": {
+        "state": "connected",
+        "net": "ALARM_DRIVE",
+        "tip": "C6 IO20 before the LED resistor",
+        "adc": "S3 IO6 via shared 6.8k series tap",
+        "digital": "S3 IO10 at the free end of the LED-drive 6.8k resistor",
+        "note": "Switched signal; ADC sample is not a waveform"
+      }
+    },
+    "digital_taps": {
+      "D1": {
+        "state": "connected",
+        "net": "LIGHT_SENSE",
+        "endpoint": "Photoresistor leg connected to C6 IO1 through 6.8k resistor",
+        "gpio": 8,
+        "series_resistor_ohm": 6800
+      },
+      "D2": {
+        "state": "connected",
+        "net": "WATER_SENSE",
+        "endpoint": "Water sensor S connected to C6 IO2 through 6.8k resistor",
+        "gpio": 9,
+        "series_resistor_ohm": 6800
+      },
+      "D3": {
+        "state": "connected",
+        "net": "ALARM_DRIVE",
+        "endpoint": "C6 IO20 before the LED resistor through 6.8k resistor",
+        "gpio": 10,
+        "series_resistor_ohm": 6800,
+        "max_transitions_per_s": 6
+      },
+      "D4": {
+        "state": "disconnected",
+        "net": "UNUSED_4",
+        "endpoint": "unconnected S3 IO11",
+        "gpio": 11,
+        "series_resistor_ohm": 6800
+      },
+      "D5": {
+        "state": "disconnected",
+        "net": "UNUSED_5",
+        "endpoint": "unconnected S3 IO12",
+        "gpio": 12,
+        "series_resistor_ohm": 6800
+      }
+    },
+    "bus_monitor": {
+      "state": "disconnected",
+      "note": "This circuit has no I2C bus; use the permanent digital taps."
+    },
+    "source": "user_declared",
+    "physically_verified": false
+  },
+  "harness_changed_during_capture": false,
+  "physical": {
+    "simultaneous": false,
+    "elapsed_ms": 26.1,
+    "wiring_source": "user_declared",
+    "readings": [
+      {
+        "timestamp": "2026-09-26T22:32:28.909477+00:00",
+        "declared_state": "connected",
+        "declared_net": "LIGHT_SENSE",
+        "kind": "voltage",
+        "probe": "P1",
+        "voltage_v": 0.534,
+        "raw": 608,
+        "samples": 32
+      },
+      {
+        "timestamp": "2026-09-26T22:32:28.918129+00:00",
+        "declared_state": "connected",
+        "declared_net": "WATER_SENSE",
+        "kind": "voltage",
+        "probe": "P2",
+        "voltage_v": 0.965,
+        "raw": 1123,
+        "samples": 32
+      },
+      {
+        "timestamp": "2026-09-26T22:32:28.935509+00:00",
+        "declared_state": "connected",
+        "declared_net": "ALARM_DRIVE",
+        "kind": "voltage",
+        "probe": "P3",
+        "voltage_v": 3.159,
+        "raw": 4095,
+        "samples": 32
+      }
+    ],
+    "digital_states": {
+      "P1": "LOW",
+      "P2": "LOW",
+      "P3": "HIGH"
+    },
+    "timestamp": "2026-09-26T22:32:28.937637+00:00",
+    "source": "s3_physical",
+    "voltage_limit_v": 3.3
+  },
+  "capture": {
+    "kind": "digital_taps",
+    "window_ms": 1000,
+    "edge_counts_approximate": true,
+    "capture_windows_overlap": true,
+    "decoded_transactions": false,
+    "taps": {
+      "D1": {
+        "start": "LOW",
+        "end": "LOW",
+        "edges": 0,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "LIGHT_SENSE",
+        "endpoint": "Photoresistor leg connected to C6 IO1 through 6.8k resistor"
+      },
+      "D2": {
+        "start": "LOW",
+        "end": "LOW",
+        "edges": 0,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "WATER_SENSE",
+        "endpoint": "Water sensor S connected to C6 IO2 through 6.8k resistor"
+      },
+      "D3": {
+        "start": "HIGH",
+        "end": "HIGH",
+        "edges": 4,
+        "declared_state": "connected",
+        "usable_for_diagnosis": true,
+        "declared_net": "ALARM_DRIVE",
+        "endpoint": "C6 IO20 before the LED resistor through 6.8k resistor"
+      }
+    },
+    "comparisons": [],
+    "expectations": [
+      {
+        "tap": "D3",
+        "net": "ALARM_DRIVE",
+        "max_transitions_per_s": 6,
+        "scope": "Upper bound on observed transitions only; does not prove the load works.",
+        "state": "pass",
+        "observed_transitions_per_s": 4.0,
+        "detail": "Observed approximately 4.00 transitions/s; declared upper bound 6/s. Check the signal and sense branch if exceeded."
+      }
+    ],
+    "wiring_source": "user_declared",
+    "continuity_verified": false,
+    "limitations": "Approximate interrupt counts with overlapping windows and small start/stop skew; no waveform, edge correlation, or protocol decode.",
+    "timestamp": "2026-09-26T22:32:31.476961+00:00",
+    "command_started_at": "2026-09-26T22:32:30.476262+00:00",
+    "command_ended_at": "2026-09-26T22:32:31.476961+00:00",
+    "source": "s3_physical",
+    "dut_stream_open_during_capture": true
+  },
+  "errors": [],
+  "serial": {
+    "port": "/dev/cu.usbmodem1101",
+    "continuous": false,
+    "events": [
+      {
+        "seq": 257,
+        "timestamp": "2026-09-26T22:32:29.362212+00:00",
+        "source": "serial_observed",
+        "port": "/dev/cu.usbmodem1101",
+        "line": "PARCEL build=parcel-guard-v1 uptime_ms=303500 light_mv=551 water_mv=1054 lid_open=0 wet=1 alert=1 fault=0"
+      },
+      {
+        "seq": 258,
+        "timestamp": "2026-09-26T22:32:29.862217+00:00",
+        "source": "serial_observed",
+        "port": "/dev/cu.usbmodem1101",
+        "line": "PARCEL build=parcel-guard-v1 uptime_ms=304000 light_mv=536 water_mv=1018 lid_open=0 wet=1 alert=1 fault=0"
+      },
+      {
+        "seq": 259,
+        "timestamp": "2026-09-26T22:32:30.362214+00:00",
+        "source": "serial_observed",
+        "port": "/dev/cu.usbmodem1101",
+        "line": "PARCEL build=parcel-guard-v1 uptime_ms=304500 light_mv=532 water_mv=1040 lid_open=0 wet=1 alert=1 fault=0"
+      },
+      {
+        "seq": 260,
+        "timestamp": "2026-09-26T22:32:30.862431+00:00",
+        "source": "serial_observed",
+        "port": "/dev/cu.usbmodem1101",
+        "line": "PARCEL build=parcel-guard-v1 uptime_ms=305000 light_mv=534 water_mv=993 lid_open=0 wet=1 alert=1 fault=0"
+      },
+      {
+        "seq": 261,
+        "timestamp": "2026-09-26T22:32:31.362214+00:00",
+        "source": "serial_observed",
+        "port": "/dev/cu.usbmodem1101",
+        "line": "PARCEL build=parcel-guard-v1 uptime_ms=305500 light_mv=535 water_mv=1055 lid_open=0 wet=1 alert=1 fault=0"
+      }
+    ]
+  },
+  "source_context": {
+    "before": {
+      "source": "local_files",
+      "commit": "7aada28e96f6f5285a131ec764e3daa4e0aef86a",
+      "short_commit": "7aada28e",
+      "dirty": true,
+      "modified_files": [
+        "benchos/dashboard.py",
+        "benchos/harness.py"
+      ],
+      "declared_dut_firmware": "parcel_guard",
+      "flashed_firmware_verified": false,
+      "files": [
+        {
+          "path": "harness/current.yaml",
+          "bytes": 2545,
+          "sha256_short": "82da7b190411"
+        },
+        {
+          "path": "lab_controller/lab_controller.ino",
+          "bytes": 8282,
+          "sha256_short": "8566f2dd6f4d"
+        },
+        {
+          "path": "lab_controller/config.h",
+          "bytes": 2000,
+          "sha256_short": "431803f41dd7"
+        },
+        {
+          "path": "benchos/client.py",
+          "bytes": 9533,
+          "sha256_short": "0371612713f4"
+        },
+        {
+          "path": "benchos/dashboard.py",
+          "bytes": 34224,
+          "sha256_short": "1eabe0c026f7"
+        },
+        {
+          "path": "benchos/dashboard_ui/app.js",
+          "bytes": 43049,
+          "sha256_short": "b7c3601c6de1"
+        },
+        {
+          "path": "mcp_server/server.py",
+          "bytes": 6471,
+          "sha256_short": "ed4c50888df7"
+        },
+        {
+          "path": "dut_examples/parcel_guard/parcel_guard.ino",
+          "bytes": 3041,
+          "sha256_short": "32ebc62681d9"
+        },
+        {
+          "path": "dut_examples/parcel_guard/config.h",
+          "bytes": 875,
+          "sha256_short": "e28efdfa99c0"
+        }
+      ],
+      "recorded_at": "2026-09-26T22:32:27.392131+00:00"
+    },
+    "after": {
+      "source": "local_files",
+      "commit": "7aada28e96f6f5285a131ec764e3daa4e0aef86a",
+      "short_commit": "7aada28e",
+      "dirty": true,
+      "modified_files": [
+        "benchos/dashboard.py",
+        "benchos/harness.py"
+      ],
+      "declared_dut_firmware": "parcel_guard",
+      "flashed_firmware_verified": false,
+      "files": [
+        {
+          "path": "harness/current.yaml",
+          "bytes": 2545,
+          "sha256_short": "82da7b190411"
+        },
+        {
+          "path": "lab_controller/lab_controller.ino",
+          "bytes": 8282,
+          "sha256_short": "8566f2dd6f4d"
+        },
+        {
+          "path": "lab_controller/config.h",
+          "bytes": 2000,
+          "sha256_short": "431803f41dd7"
+        },
+        {
+          "path": "benchos/client.py",
+          "bytes": 9533,
+          "sha256_short": "0371612713f4"
+        },
+        {
+          "path": "benchos/dashboard.py",
+          "bytes": 34224,
+          "sha256_short": "1eabe0c026f7"
+        },
+        {
+          "path": "benchos/dashboard_ui/app.js",
+          "bytes": 43049,
+          "sha256_short": "b7c3601c6de1"
+        },
+        {
+          "path": "mcp_server/server.py",
+          "bytes": 6471,
+          "sha256_short": "ed4c50888df7"
+        },
+        {
+          "path": "dut_examples/parcel_guard/parcel_guard.ino",
+          "bytes": 3041,
+          "sha256_short": "32ebc62681d9"
+        },
+        {
+          "path": "dut_examples/parcel_guard/config.h",
+          "bytes": 875,
+          "sha256_short": "e28efdfa99c0"
+        }
+      ],
+      "recorded_at": "2026-09-26T22:32:31.596773+00:00"
+    },
+    "changed_during_capture": false,
+    "flashed_firmware_verified": false
+  }
+}
