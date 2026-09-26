@@ -19,8 +19,8 @@ def describe_harness(path: Path = HARNESS_FILE) -> dict:
     if not isinstance(data, dict) or data.get("version") != 1:
         raise ValueError("Unsupported harness declaration")
     probes = data.get("probes")
-    if not isinstance(probes, dict) or set(probes) != {"P1", "P2"}:
-        raise ValueError("Harness must declare P1 and P2")
+    if not isinstance(probes, dict) or set(probes) != {"P1", "P2", "P3"}:
+        raise ValueError("Harness must declare P1, P2, and P3")
     for name, probe in probes.items():
         if not isinstance(probe, dict) or probe.get("state") not in PROBE_STATES:
             raise ValueError(f"Invalid state for {name}")
@@ -41,6 +41,19 @@ def describe_harness(path: Path = HARNESS_FILE) -> dict:
         for key in ("sda_net", "scl_net", "sda_input", "scl_input")
     ):
         raise ValueError("Connected bus monitor needs declared nets and inputs")
+    telemetry_checks = data.get("telemetry_checks", [])
+    if not isinstance(telemetry_checks, list) or len(telemetry_checks) > 8:
+        raise ValueError("telemetry_checks must be a list of at most eight rules")
+    for rule in telemetry_checks:
+        if not isinstance(rule, dict) or set(rule) != {"probe", "field", "scale_to_v", "max_delta_v"}:
+            raise ValueError("Invalid telemetry comparison rule")
+        if rule["probe"] not in probes or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}", str(rule["field"])):
+            raise ValueError("Telemetry rule needs a known probe and key=value field")
+        if any(isinstance(rule[key], bool) or not isinstance(rule[key], (int, float))
+               for key in ("scale_to_v", "max_delta_v")):
+            raise ValueError("Telemetry rule needs numeric scale and tolerance")
+        if not 0 < rule["scale_to_v"] <= 1 or not 0 <= rule["max_delta_v"] <= 3.3:
+            raise ValueError("Telemetry comparison scale or tolerance is out of range")
     if data.get("voltage_limit_v") != 3.3:
         raise ValueError("Harness voltage limit must be 3.3 V")
     return {**data, "source": "user_declared", "physically_verified": False}
@@ -48,8 +61,8 @@ def describe_harness(path: Path = HARNESS_FILE) -> dict:
 
 def update_probe_declarations(changes: dict, path: Path = HARNESS_FILE) -> dict:
     """Save only user-declared P1/P2 state and net labels, never measured facts."""
-    if not isinstance(changes, dict) or set(changes) != {"P1", "P2"}:
-        raise ValueError("Submit declarations for P1 and P2")
+    if not isinstance(changes, dict) or not changes or not set(changes) <= {"P1", "P2", "P3"}:
+        raise ValueError("Submit declarations for known probes P1, P2, or P3")
     for name, item in changes.items():
         if not isinstance(item, dict) or not {"state", "net"} <= set(item) or not set(item) <= {
             "state", "net", "expected_min_v", "expected_max_v"}:

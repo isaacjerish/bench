@@ -239,10 +239,20 @@ class DashboardState:
     def probe_sample(self, port: str) -> dict:
         if port not in set(candidate_ports()):
             raise ValueError("S3 port is not currently available")
+        probes = describe_harness()["probes"]
         with self._lock:
             with BenchClient(port) as client:
+                started = time.monotonic()
                 pair = client.measure_voltage_pair()
-                digital = {name: client.read_digital(name)["state"] for name in ("P1", "P2")}
+                if probes["P3"]["state"] == "connected":
+                    reading = client.measure_voltage("P3")
+                    pair["readings"].append({"timestamp": datetime.now(timezone.utc).isoformat(),
+                                             "declared_state": "connected", "declared_net": probes["P3"]["net"],
+                                             **reading})
+                    pair["elapsed_ms"] = round((time.monotonic() - started) * 1000, 1)
+                digital = {name: client.read_digital(name)["state"]
+                           for name in ("P1", "P2", "P3")
+                           if probes[name]["state"] == "connected"}
         pair["digital_states"] = digital
         pair["timestamp"] = datetime.now(timezone.utc).isoformat()
         pair["source"] = "s3_physical"

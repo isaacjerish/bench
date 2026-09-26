@@ -2,9 +2,11 @@
 #include <Arduino.h>
 
 // Current ESP32-S3 bench: P1 uses GPIO1 ADC + GPIO2 digital; P2 uses
-// GPIO4 ADC + GPIO5 digital. All are INPUT only. Each probe TIP connects
-// directly to its digital pin and through an equal-resistor divider to
-// its ADC pin (TIP--10k--ADC--10k--GND). Never put >3.3V on either TIP.
+// GPIO4 ADC + GPIO5 digital. P3 uses GPIO6 ADC + GPIO7 digital, with
+// separate 10k series resistors from its known 0-3.3V tip to each input.
+// All are INPUT only. P1/P2 TIP connects directly to its digital pin and
+// through an equal-resistor divider to its ADC pin (TIP--10k--ADC--10k--GND).
+// Never put >3.3V on any TIP; P3 has no voltage-divider protection.
 struct ProbeConfig {
   const char *name;
   uint8_t adcPin;
@@ -15,6 +17,7 @@ struct ProbeConfig {
 static const ProbeConfig PROBES[] = {
     {"P1", 1, 2, 2.0f},
     {"P2", 4, 5, 2.0f},
+    {"P3", 6, 7, 1.0f},
 };
 static constexpr size_t PROBE_COUNT = sizeof(PROBES) / sizeof(PROBES[0]);
 // Dedicated read-only logic inputs. Wire only after confirming these pins are

@@ -76,7 +76,7 @@ def load_suite(path: str | Path) -> tuple[str, list, dict[str, str]]:
         raise ValueError("Test file needs a 'checks' list")
     expected_nets = data.get("expected_nets", {})
     if not isinstance(expected_nets, dict) or not all(
-        key in {"P1", "P2"} and isinstance(value, str) and value
+        key in {"P1", "P2", "P3"} and isinstance(value, str) and value
         for key, value in expected_nets.items()
     ):
         raise ValueError("expected_nets must map probe names to nonempty net names")

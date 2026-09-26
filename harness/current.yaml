@@ -9,15 +9,18 @@ dut:
   board: ESP32-C6
   usb_serial_number: A0:85:E3:DA:BD:80
   serial_port_hint: /dev/cu.usbmodem5
-  firmware: imu_demo
-  sketch_path: dut_examples/imu_demo
+  firmware: plant_sentinel
+  sketch_path: dut_examples/plant_sentinel
   fqbn: esp32:esp32:esp32c6:CDCOnBoot=cdc
-  connected_sensor: replacement MPU-6500-compatible breakout
+  connected_sensor: photoresistor, water-level sensor, replacement MPU-6500-compatible breakout
   sensor_sda: C6 IO5
   sensor_scl: C6 IO7
 source_files:
-  - dut_examples/imu_demo/imu_demo.ino
-  - dut_examples/imu_demo/config.h
+  - dut_examples/plant_sentinel/plant_sentinel.ino
+  - dut_examples/plant_sentinel/config.h
+telemetry_checks:
+  - {probe: P1, field: light_mv, scale_to_v: 0.001, max_delta_v: 0.45}
+  - {probe: P3, field: water_mv, scale_to_v: 0.001, max_delta_v: 0.45}
 probes:
   P1:
     state: connected
@@ -25,7 +28,7 @@ probes:
     tip: breadboard row T
     adc: S3 IO1 via 10k/10k divider
     digital: S3 IO2 direct input
-    note: photoresistor node remains wired, but C6 currently runs imu_demo
+    note: photoresistor node and C6 IO1 are connected
   P2:
     state: connected
     net: MPU_VCC
@@ -35,10 +38,17 @@ probes:
     adc: S3 IO4 via 10k/10k divider
     digital: S3 IO5 direct input
     note: user connected tip U to MPU VCC; P2 passed 3V3, GND, and sensor VCC checks
+  P3:
+    state: connected
+    net: WATER_SENSE
+    tip: water sensor S row W
+    adc: S3 IO6 through 10k series resistor, no divider
+    digital: S3 IO7 through separate 10k series resistor
+    note: user connected water sensor plus to C6 3V3, minus to shared GND, S to C6 IO2 and separate 10k series S3 IO6/IO7 branches; S3 measured 0.000 V dry and 0.833–0.897 V wet
 bus_monitor:
   state: connected
   sda_net: MPU_SDA
   scl_net: MPU_SCL
   sda_input: S3 IO8 through 10k series resistor
   scl_input: S3 IO9 through 10k series resistor
-  note: user wired S3 IO8/IO9 through separate 10k series resistors to MPU SDA/SCL; activity not yet physically validated
+  note: user wired S3 IO8/IO9 through separate 10k series resistors to MPU SDA/SCL; both counted transitions with DUT serial open

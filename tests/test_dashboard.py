@@ -97,6 +97,10 @@ def test_probe_explorer_preserves_order_and_declared_source(monkeypatch):
                     "readings": [{"probe": "P1", "voltage_v": 2.1, "declared_net": "LIGHT_SENSE"},
                                  {"probe": "P2", "voltage_v": 3.2, "declared_net": "MPU_VCC"}]}
 
+        def measure_voltage(self, probe):
+            assert probe == "P3"
+            return {"probe": probe, "voltage_v": 0.4}
+
         def read_digital(self, probe):
             return {"state": "HIGH" if probe == "P2" else "LOW"}
 
@@ -105,8 +109,9 @@ def test_probe_explorer_preserves_order_and_declared_source(monkeypatch):
     sample = DashboardState().probe_sample("/dev/fake")
     assert sample["source"] == "s3_physical"
     assert sample["simultaneous"] is False
-    assert [row["probe"] for row in sample["readings"]] == ["P1", "P2"]
-    assert sample["digital_states"] == {"P1": "LOW", "P2": "HIGH"}
+    assert [row["probe"] for row in sample["readings"]] == ["P1", "P2", "P3"]
+    assert sample["readings"][2]["declared_net"] == "WATER_SENSE"
+    assert sample["digital_states"] == {"P1": "LOW", "P2": "HIGH", "P3": "LOW"}
 
 
 def test_bus_sample_reports_raw_activity_without_claiming_decode(monkeypatch):

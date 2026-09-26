@@ -13,7 +13,9 @@ real hardware results. The key directories are:
 - `dut_examples/servo_demo/`: ESP32-C6 servo PWM and three selectable faults.
 - `dut_examples/led_demo/`: tested 2 Hz visible LED demo.
 - `dut_examples/light_sensor_demo/`: photoresistor cross-check demo, available to reflash.
-- `dut_examples/imu_demo/`: currently flashed MPU-family I²C motion demo.
+- `dut_examples/imu_demo/`: earlier MPU-family I²C motion demo.
+- `dut_examples/plant_sentinel/`: currently flashed combined light, water,
+  motion, and LED demo; see `PLANT_SENTINEL_PLAN.md`.
 - `harness/current.yaml`: user-declared live wiring map; update after any wire move.
 - `benchos/dashboard.py` and `benchos/dashboard_ui/`: generic local design
   workspace with a declared-net overhead map, paired physical probes, target
@@ -40,9 +42,10 @@ real hardware results. The key directories are:
 - C6 GPIO20 and the LED/resistor branch have been removed from T. A
   photoresistor connects C6 3V3 to T; a separate 10 kΩ resistor connects T to
   shared GND; C6 GPIO1 also measures T. The S3 P1 divider remains in place.
-- C6 currently runs `imu_demo` with `DEMO_FAULT=0`, SDA on IO5 and SCL on IO7.
+- C6 currently runs `plant_sentinel` with `DEMO_FAULT=0`; SDA is IO5 and SCL
+  IO7. It also samples light on IO1 and water on IO2, and drives an LED on IO20.
   The user swapped in a second MPU breakout on the same reported wiring.
-  The photoresistor circuit remains wired, but `light-compare` needs
+  The photoresistor circuit remains wired, but the old `light-compare` profile needs
   `light_sensor_demo` reflashed before it can pass again.
 - Both USB boards were present on 2026-09-26. Before the C6 was switched to
   `imu_demo`, the live `light-compare` check
@@ -59,6 +62,34 @@ real hardware results. The key directories are:
   its 700 mA output rating is below the SG90 maker's possible 2 A draw. Do not
   use an ESP32 GPIO,
   3.3 V pin, or board 5 V header to power the servo.
+
+## Multi-sensor checkpoint (later on 2026-09-26)
+
+- User connected a 3-pin water sensor (`+` to C6 3V3, `-` to shared GND,
+  `S` to C6 IO2) and two separate 10 kΩ S3 sense branches from `S` to
+  P3 ADC IO6 and digital IO7. S3 firmware with P3 compiled and uploaded with
+  Arduino flash verification. P3 measured 0.000 V dry and 0.897/0.833 V wet.
+- User wired an LED from C6 IO20 through a 220–330 Ω resistor to the LED
+  anode, with cathode to shared GND. LED operation during an alert still needs
+  observation. The unmarked passive buzzer and unlabeled DHT11 stay disconnected.
+- `plant_sentinel` compiled and flashed to the enrolled C6 with verified flash
+  hashes after pausing dashboard serial polling. A first upload attempt failed
+  before verification due to a serial disconnect and must not be counted.
+  Fresh C6 serial identified `plant-sentinel-v1` and reported light 2.52 V,
+  water 0.016–0.033 V dry, IMU ID `0x70`, Z about 1.08 g, and no alert.
+  S3 independently measured P1 2.464 V, P2 3.226 V, P3 0.003 V dry.
+- The dashboard's generic telemetry cards parse numeric `key=value` serial
+  output. `harness/current.yaml` declares P1/light and P3/water comparisons,
+  each with a 0.45 V tolerance. The live page showed “Independent readings
+  agree” for the dry baseline. This checks reported analog values against S3
+  readings near in time; it does not verify unprobed LED current or decode I²C.
+- A second reversible SCL-open test before the combined sketch showed MPU
+  VCC at 3.191 V, SDA 36 edges and SCL 0 edges in a 2 s S3 capture while
+  C6 serial reported `IMU_ERROR no_device_at_0x68_or_0x69`. After restoring
+  SCL, S3 counted SDA 492 and SCL 1,929 edges and the IMU stream recovered.
+- Current host tests: 39 passed, 1 sandbox socket test skipped. JS syntax and
+  whitespace checks passed. The dashboard is served at `127.0.0.1:8765` when
+  its local process is running.
 
 ## What has been validated
 
@@ -226,8 +257,8 @@ Run in the repository directory:
 ./scripts/python.sh -m pytest -q
 ```
 
-The C6 currently runs `imu_demo`; use the dashboard's generic serial monitor
-or `read_imu_stream` MCP tool for its output. Reflash `light_sensor_demo`
+The C6 currently runs `plant_sentinel`; use the dashboard's generic serial
+monitor for its output. Reflash `light_sensor_demo`
 before running `light-compare` again. To open the dashboard:
 
 ```sh

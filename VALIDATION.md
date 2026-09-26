@@ -68,6 +68,11 @@ not mocked values.
 | Generic enrolled-DUT flash | `flash-dut` compiled, rediscovered C6 USB serial `A0:85:E3:DA:BD:80`, uploaded only to `/dev/cu.usbmodem5`, and Arduino reported verified flash hashes. C6 then produced fresh IMU data. |
 | Independent postflash checks | S3 measured MPU VCC at 3.217 V, then counted 502 SDA and 1,936 SCL transitions in 2 s while the C6 serial stream was open. This proves power and bus activity at the declared nodes, not the exact running binary or full circuit behavior. |
 | Host tests after flash and synchronized capture | 39 passed, 1 sandbox socket test skipped; JavaScript syntax and Git whitespace checks passed. |
+| Second SCL-open fault and restoration | With MPU VCC 3.191 V, S3 counted SDA 36/SCL 0 edges in 2 s while C6 reported `IMU_ERROR no_device_at_0x68_or_0x69`. Restored SCL yielded SDA 492/SCL 1,929 edges and a fresh motion stream. |
+| S3 third-probe firmware | P3 on S3 IO6 ADC/IO7 digital compiled, uploaded with Arduino verification, and appeared in S3 `INFO` as a third probe. |
+| Water-sensor dry/wet response | P3 measured 0.000 V dry, then 0.897 V and 0.833 V in separate samples with only the sensor comb wet; this supports a 0.5 V provisional wet threshold. |
+| Combined DUT firmware | `plant_sentinel` compiled and uploaded to enrolled C6 serial `A0:85:E3:DA:BD:80`; verified flash hashes on the successful second attempt. Fresh serial showed build ID `plant-sentinel-v1`, light about 2.52 V, water 0.016–0.033 V dry, IMU ID `0x70`, no active alert. The first upload attempt lost the serial connection before verification. |
+| Combined dry baseline cross-check | S3 independently measured P1 2.464 V, P2 3.226 V and P3 0.003 V while C6 reported light ~2.52 V and water ~0.02 V. The dashboard reported agreement under harness-declared 0.45 V tolerances. LED output and wet C6 report remain to be checked. |
 
 The resistor divider is nominally 1:2. These values show a working physical
 measurement loop, but the ADC and resistor tolerances do not make it a

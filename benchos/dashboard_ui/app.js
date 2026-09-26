@@ -1,5 +1,5 @@
 const el = (id) => document.getElementById(id);
-const names = ['P1', 'P2'];
+const names = ['P1', 'P2', 'P3'];
 let harness = null, latestSample = null, latestBus = null, inventory = null;
 let preview = false, auto = true, probeBusy = false, busBusy = false, serialBusy = false, serialPaused = false;
 let serialSeq = 0, serialEvents = [], session = [];
@@ -97,7 +97,7 @@ function previewSample() {
   });
   return {source:'preview', simultaneous:false, timestamp:new Date().toISOString(),
     wiring_source:'user_declared', elapsed_ms:28.4, voltage_limit_v:3.3,
-    digital_states:{P1:'HIGH',P2:'HIGH'}, readings};
+    digital_states:{P1:'HIGH',P2:'HIGH',P3:'HIGH'}, readings};
 }
 function evaluate(sample) {
   if (!sample) return {state:'unknown', label:'AWAITING EVIDENCE', title:'Ready when you are.', detail:'Select the S3 port and take a paired probe reading.', next:'Take a paired reading on known safe nodes.'};
@@ -111,8 +111,36 @@ function evaluate(sample) {
   const failed = checks.find(item => !item.pass);
   if (disconnected.length) return {state:'unknown', label:'WIRING NOT CONFIRMED', title:'Probe assignment unclear.', detail:disconnected.map(row => row.probe).join(' and ') + ' has no confirmed net in the declaration. Its voltage is real, but the node identity is unknown.', next:'Confirm the probe tip and shared ground, then update the declared connection.'};
   if (failed) return {state:'fail', label:'MEASURED TARGET MISSED', title:failed.net + ' is outside target.', detail:failed.probe + ' measured ' + failed.value.toFixed(3) + ' V; the declared range is ' + failed.min.toFixed(2) + '–' + failed.max.toFixed(2) + ' V.', next:'Check the power source, ground path, and load at ' + failed.net + ', then sample again.'};
+  const comparisons = [];
+  if (!preview && harness && Array.isArray(harness.telemetry_checks)) {
+    const recent = [...serialEvents].reverse().find(item =>
+      Math.abs(Date.parse(item.timestamp) - Date.parse(sample.timestamp)) <= 5000 && item.line.includes('='));
+    if (recent) for (const rule of harness.telemetry_checks) {
+      const physical = sample.readings.find(row => row.probe === rule.probe && row.declared_state === 'connected');
+      const match = recent.line.match(new RegExp('(?:^|\\s)' + rule.field + '=(-?\\d+(?:\\.\\d+)?)(?=\\s|$)'));
+      if (!physical || !match) continue;
+      const claimed = Number(match[1]) * Number(rule.scale_to_v);
+      if (Number.isFinite(claimed)) comparisons.push({rule, physical:Number(physical.voltage_v), claimed, delta:Math.abs(claimed - Number(physical.voltage_v))});
+    }
+  }
+  const disagreement = comparisons.find(item => item.delta > Number(item.rule.max_delta_v));
+  if (disagreement) return {state:'fail', label:'DUT REPORT DISAGREES', title:disagreement.rule.field + ' differs from ' + disagreement.rule.probe + '.',
+    detail:'DUT serial claims ' + disagreement.claimed.toFixed(3) + ' V; S3 measured ' + disagreement.physical.toFixed(3) + ' V at the declared net. Difference ' + disagreement.delta.toFixed(3) + ' V exceeds ' + Number(disagreement.rule.max_delta_v).toFixed(3) + ' V.',
+    next:'Check ADC scaling, selected pin, and report logic. Repeat with a controlled change at the sensor.'};
+  const busIsFresh = latestBus && !preview && Math.abs(Date.parse(latestBus.timestamp) - Date.parse(sample.timestamp)) < 15000;
+  if (busIsFresh && latestBus.sda.edges > 0 && latestBus.scl.edges === 0) {
+    const recentError = [...serialEvents].reverse().find(item => /ERROR|FAIL/i.test(item.line) && Math.abs(Date.parse(item.timestamp) - Date.parse(latestBus.timestamp)) < 15000);
+    return {state:'fail', label:'CLOCK PATH NEEDS CHECK', title:'Data moved; clock stayed static.',
+      detail:'The S3 counted ' + latestBus.sda.edges + ' data transitions and zero clock transitions at the declared monitor points.' + (recentError ? ' DUT serial also reported: ' + recentError.line : ''),
+      next:'Check the declared clock row, its probe branch, and the DUT-to-device clock jumper. Then capture again.'};
+  }
+  if (busIsFresh && latestBus.scl.edges > 0 && latestBus.sda.edges === 0) return {
+    state:'fail', label:'DATA PATH NEEDS CHECK', title:'Clock moved; data stayed static.',
+    detail:'The S3 counted ' + latestBus.scl.edges + ' clock transitions and zero data transitions at the declared monitor points.',
+    next:'Check the declared data row and its sense branch, then capture again.'};
+  if (comparisons.length) return {state:'pass', label:'REPORTS AGREE WITH PROBES', title:'Independent readings agree.', detail:comparisons.length + ' declared serial field' + (comparisons.length === 1 ? '' : 's') + ' matched fresh S3 probe readings within configured tolerance.', next:'Change one input or introduce a reversible fault, then capture both sources again.'};
   if (checks.length) return {state:'pass', label:'PHYSICAL TARGETS MET', title:'Checked nodes are in range.', detail:checks.length + ' declared target' + (checks.length === 1 ? '' : 's') + ' matched the S3 readings. This says nothing about unprobed parts of the design.', next:'Sample during the failing behavior, then inspect the device serial output or move a probe to a discriminating node.'};
-  return {state:'observed', label:'PHYSICAL VALUES CAPTURED', title:'Two nodes measured.', detail:'The S3 recorded both voltages. Add expected ranges to get a bounded pass/fail check for this design.', next:'Declare a target voltage range or compare readings before and after a controlled stimulus.'};
+  return {state:'observed', label:'PHYSICAL VALUES CAPTURED', title:sample.readings.length + ' nodes measured.', detail:'The S3 recorded the connected probe voltages. Add expected ranges to get a bounded pass/fail check for this design.', next:'Declare a target voltage range or compare readings before and after a controlled stimulus.'};
 }
 function renderAssessment() {
   const verdict = evaluate(latestSample);
@@ -128,7 +156,7 @@ function renderAssessment() {
     for (const row of latestSample.readings) {
       evidence.push((preview ? 'Preview ' : 'S3 ') + row.probe + ' ' + (preview ? 'sampled ' : 'measured ') + Number(row.voltage_v).toFixed(3) + ' V. Net ' + (row.declared_net || 'unassigned') + ' is user-declared.');
     }
-    evidence.push('P1 and P2 were read in order, ' + (latestSample.elapsed_ms == null ? 'not simultaneously.' : Number(latestSample.elapsed_ms).toFixed(1) + ' ms apart overall.'));
+    evidence.push(latestSample.readings.map(row => row.probe).join(', ') + ' were read in order, ' + (latestSample.elapsed_ms == null ? 'not simultaneously.' : Number(latestSample.elapsed_ms).toFixed(1) + ' ms overall.'));
   } else evidence.push('Waiting for an S3 probe measurement.');
   if (latestBus) evidence.push((preview ? 'Preview bus sample: ' : 'S3 bus inputs: ') +
     'SDA ' + latestBus.sda.edges + ' edges, SCL ' + latestBus.scl.edges + ' edges in ' + latestBus.window_ms + ' ms; transactions not decoded.');
@@ -153,7 +181,7 @@ function renderTimeline() {
     const row = document.createElement('div'); row.className = 'timeline-row'; row.dataset.state = item.state;
     const time = document.createElement('time'); time.textContent = timeLabel(item.time);
     const title = document.createElement('strong'); title.textContent = (item.manual ? 'CAPTURE · ' : '') + item.title;
-    const probes = document.createElement('span'); probes.className = 'timeline-probe'; probes.textContent = 'P1 + P2';
+    const probes = document.createElement('span'); probes.className = 'timeline-probe'; probes.textContent = item.sample.readings.map(row => row.probe).join(' + ');
     const mark = document.createElement('span'); mark.className = 'timeline-mark'; mark.textContent = item.state === 'pass' ? '✓' : item.state === 'fail' ? '!' : '·';
     row.append(time, title, probes, mark); target.append(row);
   }
@@ -176,7 +204,7 @@ async function sampleProbes() {
   if (preview) { renderProbeSample(previewSample()); return; }
   const port = el('lab-port').value;
   if (!port) { setText('probe-status', 'Choose an S3 port before sampling.'); return; }
-  probeBusy = true; el('sample-probes').disabled = true; setText('probe-status', 'Sampling P1, then P2…');
+  probeBusy = true; el('sample-probes').disabled = true; setText('probe-status', 'Sampling connected probes…');
   try {
     const response = await fetch('/api/probes?' + new URLSearchParams({lab_port:port}), {cache:'no-store'});
     const data = await response.json();
@@ -260,7 +288,34 @@ async function saveDeclaration(event) {
     setText('declaration-status', 'Saved locally · user-declared, not physically verified');
   } catch (error) { setText('declaration-status', 'Not saved: ' + error.message); }
 }
+function renderTelemetry() {
+  const target = el('telemetry-fields');
+  target.replaceChildren();
+  const event = [...serialEvents].reverse().find(item => /(?:^|\s)[A-Za-z][A-Za-z0-9_]{0,31}=\S+/.test(item.line));
+  if (!event) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = 'Structured fields appear here when the device emits them.';
+    target.append(empty);
+    setText('telemetry-source', 'Awaiting key=value output');
+    return;
+  }
+  const fields = [...event.line.matchAll(/(?:^|\s)([A-Za-z][A-Za-z0-9_]{0,31})=([^\s]{1,64})/g)].slice(0, 16);
+  const prefix = event.line.split(/\s/, 1)[0];
+  const age = Date.now() - Date.parse(event.timestamp);
+  setText('telemetry-source', (preview ? 'PREVIEW · ' : age > 15000 ? 'STALE · ' : 'OBSERVED · ') + prefix + ' · ' + timeLabel(event.timestamp));
+  for (const [, key, value] of fields) {
+    const card = document.createElement('div');
+    const label = document.createElement('span');
+    const reading = document.createElement('strong');
+    label.textContent = key.replaceAll('_', ' ');
+    reading.textContent = value;
+    card.append(label, reading);
+    target.append(card);
+  }
+}
 function renderSerial() {
+  renderTelemetry();
   const target = el('serial-lines'), filter = el('serial-filter').value.trim().toLowerCase();
   target.replaceChildren();
   const matches = serialEvents.filter(item => item.line.toLowerCase().includes(filter)).slice(-160);
