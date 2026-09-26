@@ -6,6 +6,9 @@ let harness = null, latestSample = null, latestBus = null, latestTaps = null, in
 let preview = false, auto = true, probeBusy = false, busBusy = false, serialBusy = false, serialPaused = false;
 let captureBusy = false;
 let serialSeq = 0, serialEvents = [], session = [];
+const voice = {active:false, ready:false, socket:null, stream:null, audio:null, source:null,
+  processor:null, mute:null, playbackAt:0, playbackTimer:null, players:new Set(), pendingTools:[], toolRun:false,
+  userDraft:null, assistantDraft:null, aborter:null, generation:0, audioQueue:[], tools:[]};
 try {
   const saved = JSON.parse(localStorage.getItem('benchos-workspace-session-v2') || '[]');
   if (Array.isArray(saved)) session = saved.slice(-100);
@@ -529,6 +532,261 @@ async function loadSource() {
     target.append(fragment);
   } catch (error) { setText('source-meta', 'Source unavailable: ' + error.message); }
 }
+function voiceState(state, message) {
+  el('voice-debug').dataset.state = state;
+  setText('voice-status', message);
+}
+function clearVoiceTranscript() {
+  el('voice-transcript').replaceChildren();
+  const p = document.createElement('p'); p.className = 'empty-state';
+  p.textContent = 'Your live transcript will appear here while the microphone is active.';
+  el('voice-transcript').append(p);
+  voice.userDraft = null; voice.assistantDraft = null;
+}
+function renderVoiceTurn(role, text, draft = false) {
+  const target = el('voice-transcript');
+  target.querySelector('.empty-state')?.remove();
+  let row = draft ? (role === 'user' ? voice.userDraft : voice.assistantDraft) : null;
+  if (!row) {
+    row = document.createElement('div'); row.className = 'voice-turn'; row.dataset.role = role;
+    const label = document.createElement('strong'); label.textContent = role === 'user' ? 'You' : 'Grok';
+    const content = document.createElement('span'); row.append(label, content); target.append(row);
+    if (draft) {
+      if (role === 'user') voice.userDraft = row;
+      else voice.assistantDraft = row;
+    }
+  }
+  row.lastElementChild.textContent = text;
+  target.scrollTop = target.scrollHeight;
+}
+function finishVoiceDraft(role) {
+  if (role === 'user') voice.userDraft = null;
+  else voice.assistantDraft = null;
+}
+function b64FromBuffer(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + 0x8000, bytes.length)));
+  }
+  return btoa(binary);
+}
+function pcmBufferFromBase64(value) {
+  const binary = atob(value), buffer = new ArrayBuffer(binary.length), bytes = new Uint8Array(buffer);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return buffer;
+}
+function playVoiceAudio(encoded) {
+  if (!voice.audio || !voice.active) return;
+  const pcm = new Int16Array(pcmBufferFromBase64(encoded));
+  const audio = voice.audio.createBuffer(1, pcm.length, 24000), channel = audio.getChannelData(0);
+  for (let i = 0; i < pcm.length; i += 1) channel[i] = pcm[i] / 32768;
+  const player = voice.audio.createBufferSource(); player.buffer = audio; player.connect(voice.audio.destination);
+  const startAt = Math.max(voice.playbackAt, voice.audio.currentTime + 0.015);
+  voice.playbackAt = startAt + audio.duration;
+  voice.players.add(player); player.onended = () => voice.players.delete(player); player.start(startAt);
+}
+function stopVoicePlayback() {
+  clearTimeout(voice.playbackTimer); voice.playbackTimer = null;
+  for (const player of voice.players) { try { player.stop(); } catch {} }
+  voice.players.clear();
+  if (voice.audio) voice.playbackAt = voice.audio.currentTime;
+}
+function voiceReplyIsPlaying() {
+  return Boolean(voice.audio && voice.playbackAt > voice.audio.currentTime + 0.04);
+}
+function voiceContext() {
+  const verdict = el('assessment');
+  return {
+    preview_mode: preview,
+    preview_notice: preview ? 'Values below are synthetic preview samples, never live readings.' : null,
+    harness: harness || null,
+    selected_ports: {s3:el('lab-port').value || null, dut:el('dut-port').value || null},
+    latest_probe_sample: latestSample || null,
+    latest_bus_sample: latestBus || null,
+    current_assessment: {state:verdict.dataset.state || 'unknown', title:el('assessment-title').textContent,
+      detail:el('assessment-detail').textContent},
+    recent_dut_serial: serialEvents.slice(-12).map(event => ({timestamp:event.timestamp, line:event.line})),
+    source_inventory: inventory ? {revision:inventory.short_commit, files:inventory.files.map(file => file.path)} : null,
+  };
+}
+async function voiceRequest(url, body) {
+  const response = await fetch(url, {method:'POST', cache:'no-store', headers:{'Content-Type':'application/json','X-Benchy-Local':'1'},
+    body:JSON.stringify(body)});
+  const data = await response.json();
+  if (!response.ok) throw Error(data.error || 'Voice request failed');
+  return data;
+}
+async function loadVoiceStatus() {
+  try {
+    const response = await fetch('/api/voice/status', {cache:'no-store'}), data = await response.json();
+    const button = el('voice-toggle'); button.disabled = !data.configured;
+    document.body.dataset.voiceConfigured = String(Boolean(data.configured));
+    if (data.configured) voiceState('idle', 'Ready · ' + data.model + ' · voice tools are read-only');
+    else voiceState('error', 'Set XAI_API_KEY before launching the dashboard to enable voice.');
+  } catch { voiceState('error', 'Voice setup status is unavailable.'); }
+}
+function closeVoice(message = 'Conversation ended.') {
+  if (!voice.active && !voice.stream && !voice.audio && !voice.socket) return;
+  voice.active = false; voice.ready = false; voice.generation += 1;
+  voice.aborter?.abort(); voice.aborter = null;
+  voice.pendingTools = []; voice.toolRun = false;
+  voice.audioQueue = []; voice.tools = [];
+  if (voice.socket) { voice.socket.onclose = null; try { voice.socket.close(1000, 'Conversation ended'); } catch {} }
+  voice.socket = null;
+  if (voice.processor) { voice.processor.port.onmessage = null; try { voice.processor.disconnect(); } catch {} }
+  if (voice.source) { try { voice.source.disconnect(); } catch {} }
+  if (voice.mute) { try { voice.mute.disconnect(); } catch {} }
+  voice.processor = null; voice.source = null; voice.mute = null;
+  if (voice.stream) for (const track of voice.stream.getTracks()) track.stop();
+  voice.stream = null; stopVoicePlayback();
+  if (voice.audio) { const context = voice.audio; voice.audio = null; context.close().catch(() => {}); }
+  clearVoiceTranscript();
+  el('voice-toggle').setAttribute('aria-pressed', 'false');
+  setText('voice-button-label', 'Start conversation');
+  voiceState(message.startsWith('Could not') || message.startsWith('Voice error') ? 'error' : 'idle', message);
+  el('voice-toggle').disabled = document.body.dataset.voiceConfigured !== 'true';
+}
+function sendVoiceEvent(event) {
+  if (voice.socket && voice.socket.readyState === WebSocket.OPEN) voice.socket.send(JSON.stringify(event));
+}
+async function executePendingVoiceTools(generation) {
+  if (voice.toolRun || !voice.pendingTools.length) return;
+  voice.toolRun = true; voiceState('thinking', 'Grok is checking Benchy evidence…');
+  const calls = voice.pendingTools.splice(0), outputs = [];
+  for (const call of calls) {
+    let result;
+    try {
+      const args = JSON.parse(call.arguments || '{}');
+      result = await voiceRequest('/api/voice/tool', {name:call.name, arguments:args});
+    } catch (error) { result = {error:error.message || 'Tool call failed'}; }
+    outputs.push({type:'conversation.item.create', item:{type:'function_call_output', call_id:call.call_id,
+      output:JSON.stringify(result)}});
+  }
+  voice.toolRun = false;
+  if (!voice.active || generation !== voice.generation) return;
+  for (const output of outputs) sendVoiceEvent(output);
+  const waitMs = Math.max(0, (voice.playbackAt - (voice.audio?.currentTime || 0)) * 1000);
+  if (waitMs) await new Promise(resolve => setTimeout(resolve, Math.min(waitMs + 30, 30_000)));
+  if (voice.active && generation === voice.generation) {
+    sendVoiceEvent({type:'response.create'});
+    voiceState('listening', 'Listening · ask a follow-up whenever you’re ready.');
+  }
+}
+function handleVoiceEvent(event, generation) {
+  if (!voice.active || generation !== voice.generation) return;
+  if (event.type === 'session.created') {
+    const snapshot = voiceContext();
+    const instructions = 'You are Benchy, a concise conversational hardware debugging partner. Ask focused questions, read the declared harness before selecting probes, and distinguish physical S3 evidence from DUT claims. P1/P2/P3 accept only known 0–3.3 V signals with common ground; never suggest 5 V or unknown voltage. Ask the user to confirm physical placement if wiring may have changed. Use only read-only tools; never flash firmware. If Preview mode is on, treat every displayed reading as synthetic. Explain what each measurement shows and its uncertainty. Current dashboard snapshot (source labels are authoritative): ' + JSON.stringify(snapshot);
+    voice.tools.forEach(tool => { if (tool.name === 'build_and_flash_dut' || tool.name === 'flash_dut') throw Error('Write tools are blocked in voice mode'); });
+    sendVoiceEvent({type:'session.update', session:{
+      modalities:['text','audio'], voice:'eve', instructions,
+      turn_detection:{type:'server_vad'},
+      audio:{input:{format:{type:'audio/pcm',rate:24000},transcription:{model:'grok-transcribe'}},
+        output:{format:{type:'audio/pcm',rate:24000}},
+      }, tools:voice.tools, tool_choice:'auto'
+    }});
+    voiceState('connecting', 'Connected · setting up microphone and read-only tools…');
+  } else if (event.type === 'session.updated') {
+    voice.ready = true;
+    for (const audio of voice.audioQueue.splice(0)) sendVoiceEvent({type:'input_audio_buffer.append', audio:b64FromBuffer(audio)});
+    el('voice-toggle').disabled = false;
+    voiceState('listening', 'Listening · speak naturally; click to stop.');
+  } else if (event.type === 'conversation.item.input_audio_transcription.updated') {
+    renderVoiceTurn('user', event.transcript || '', true);
+  } else if (event.type === 'conversation.item.input_audio_transcription.completed') {
+    renderVoiceTurn('user', event.transcript || '', true); finishVoiceDraft('user');
+  } else if (event.type === 'response.output_audio_transcript.delta') {
+    const current = voice.assistantDraft?.lastElementChild?.textContent || '';
+    renderVoiceTurn('assistant', current + (event.delta || ''), true);
+  } else if (event.type === 'response.output_audio_transcript.done') {
+    if (event.transcript && !voice.assistantDraft) renderVoiceTurn('assistant', event.transcript, true);
+    finishVoiceDraft('assistant');
+  } else if (event.type === 'response.output_audio.delta' || event.type === 'response.audio.delta') {
+    if (event.delta) playVoiceAudio(event.delta);
+    voiceState('speaking', 'Grok is speaking · interrupt any time.');
+  } else if (event.type === 'input_audio_buffer.speech_started') {
+    stopVoicePlayback(); voiceState('listening', 'Listening…');
+  } else if (event.type === 'response.function_call_arguments.done') {
+    voice.pendingTools.push({name:event.name, arguments:event.arguments, call_id:event.call_id});
+  } else if (event.type === 'response.done') {
+    if (voice.pendingTools.length) executePendingVoiceTools(generation);
+    else if (voiceReplyIsPlaying()) {
+      const generationAtEnd = generation;
+      const waitMs = Math.max(0, (voice.playbackAt - voice.audio.currentTime) * 1000);
+      voiceState('speaking', 'Grok is finishing · speak after the reply to avoid microphone echo.');
+      voice.playbackTimer = setTimeout(() => {
+        voice.playbackTimer = null;
+        if (voice.active && generationAtEnd === voice.generation)
+          voiceState('listening', 'Listening · speak naturally; click to stop.');
+      }, waitMs + 40);
+    } else voiceState('listening', 'Listening · speak naturally; click to stop.');
+  } else if (event.type === 'error') {
+    closeVoice('Voice error · ' + (event.error?.message || 'check the xAI connection and retry.'));
+  }
+}
+async function startVoice() {
+  const button = el('voice-toggle'); button.disabled = true;
+  voiceState('connecting', 'Requesting microphone access…');
+  button.setAttribute('aria-pressed', 'true'); setText('voice-button-label', 'End conversation');
+  clearVoiceTranscript(); voice.active = true; voice.generation += 1;
+  const generation = voice.generation;
+  try {
+    if (!navigator.mediaDevices?.getUserMedia || !window.AudioWorkletNode)
+      throw Error('This browser does not support live microphone audio.');
+    voice.stream = await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,
+      noiseSuppression:true,autoGainControl:true}});
+    voice.audio = new AudioContext({sampleRate:24000});
+    await voice.audio.resume();
+    await voice.audio.audioWorklet.addModule('/audio-worklet.js');
+    const [token, toolData] = await Promise.all([
+      voiceRequest('/api/voice/session', {}),
+      fetch('/api/voice/tools', {cache:'no-store'}).then(async response => {
+        const data = await response.json(); if (!response.ok) throw Error(data.error || 'Voice tools unavailable'); return data;
+      }),
+    ]);
+    voice.tools = toolData.tools || [];
+    if (!voice.tools.length) throw Error('No read-only Benchy tools are available. Install the MCP extra.');
+    const url = 'wss://api.x.ai/v1/realtime?model=grok-voice-latest';
+    voice.socket = new WebSocket(url, ['xai-client-secret.' + token.value]);
+    voice.socket.onmessage = message => {
+      try { handleVoiceEvent(JSON.parse(message.data), generation); }
+      catch (error) { closeVoice('Voice error · ' + (error.message || 'could not process the session.')); }
+    };
+    voice.socket.onerror = () => closeVoice('Could not connect to Grok voice. Check your network and xAI account.');
+    voice.socket.onclose = event => {
+      if (voice.active && generation === voice.generation) closeVoice(event.reason || 'Grok voice connection closed.');
+    };
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(Error('Timed out connecting to Grok voice.')), 15_000);
+      voice.socket.addEventListener('open', () => { clearTimeout(timeout); resolve(); }, {once:true});
+      voice.socket.addEventListener('error', () => { clearTimeout(timeout); reject(Error('Could not connect to Grok voice.')); }, {once:true});
+    });
+    if (!voice.active || generation !== voice.generation) return;
+    voice.source = voice.audio.createMediaStreamSource(voice.stream);
+    voice.processor = new AudioWorkletNode(voice.audio, 'benchy-pcm-capture', {numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1]});
+    voice.mute = voice.audio.createGain(); voice.mute.gain.value = 0;
+    voice.processor.port.onmessage = message => {
+      if (!voice.active || !voice.socket || voice.socket.readyState !== WebSocket.OPEN) return;
+      // Speaker playback can leak into the microphone and be transcribed as the user's next turn.
+      // Drop those frames while a Grok response is queued or playing.
+      if (voiceReplyIsPlaying()) return;
+      if (voice.ready) sendVoiceEvent({type:'input_audio_buffer.append', audio:b64FromBuffer(message.data)});
+      else {
+        voice.audioQueue.push(message.data);
+        if (voice.audioQueue.length > 20) voice.audioQueue.shift();
+      }
+    };
+    voice.source.connect(voice.processor); voice.processor.connect(voice.mute); voice.mute.connect(voice.audio.destination);
+    button.disabled = false;
+  } catch (error) {
+    closeVoice('Could not start voice: ' + (error.message || 'please retry.'));
+  }
+}
+function toggleVoice() {
+  if (voice.active) closeVoice();
+  else startVoice();
+}
 function togglePreview() {
   preview = !preview; document.body.classList.toggle('preview', preview);
   el('preview-toggle').setAttribute('aria-pressed', String(preview));
@@ -561,6 +819,7 @@ async function saveNewCapture(event) {
 
 el('save-capture-form').addEventListener('submit', saveNewCapture);
 el('preview-toggle').addEventListener('click', togglePreview);
+el('voice-toggle').addEventListener('click', toggleVoice);
 el('refresh-button').addEventListener('click', async () => { await loadHarness(); await Promise.all([loadPorts(), loadCode()]); if (auto) { sampleProbes(); sampleBus(); } pollSerial(); });
 for (const kind of ['lab', 'dut']) el(kind + '-port').addEventListener('change', event => {
   localStorage.setItem('benchos-' + kind + '-port', event.target.value);
@@ -585,6 +844,7 @@ el('serial-filter').addEventListener('input', renderSerial);
 el('source-select').addEventListener('change', loadSource);
 el('source-refresh').addEventListener('click', loadCode);
 renderTimeline();
+loadVoiceStatus();
 loadHarness().then(() => Promise.all([loadPorts(), loadCode()])).then(() => {
   renderAssessment(); sampleProbes(); sampleBus(); pollSerial();
   setInterval(() => { if (auto) sampleProbes(); }, 5000);

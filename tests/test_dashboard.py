@@ -176,6 +176,8 @@ def test_dashboard_serves_assets_and_snapshot_without_hardware(monkeypatch):
             assert b"Benchy" in response.read()
         with urlopen(base + "/app.js") as response:
             assert b"const names = ['P1', 'P2', 'P3']" in response.read()
+        with urlopen(base + "/audio-worklet.js") as response:
+            assert b"registerProcessor('benchy-pcm-capture'" in response.read()
         with urlopen(base + "/workspace-model.js") as response:
             assert b"compareObservations" in response.read()
         with urlopen(base + "/records.js") as response:

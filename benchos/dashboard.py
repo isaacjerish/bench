@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import json
 import math
+import os
 import re
 import subprocess
 import threading
 import time
+import urllib.error
+import urllib.request
 from collections import deque
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -35,6 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 BASE_SOURCE_FILES = ("harness/current.yaml", "lab_controller/lab_controller.ino",
                      "lab_controller/config.h", "benchos/client.py",
                      "benchos/dashboard.py", "benchos/dashboard_ui/app.js",
+                     "benchos/dashboard_ui/audio-worklet.js",
                      "mcp_server/server.py")
 IMU_LINE = re.compile(r"IMU_ACCEL_G x=(-?\d+\.\d+) y=(-?\d+\.\d+) z=(-?\d+\.\d+)(?: id=0x([0-9A-Fa-f]{2}))?\Z")
 WHO_LINE = re.compile(r"IMU_FOUND addr=0x([0-9A-Fa-f]{2}) who_am_i=0x([0-9A-Fa-f]{2})\Z")
@@ -42,7 +47,28 @@ ASSETS = {"/": ("index.html", "text/html; charset=utf-8"),
           "/app.css": ("app.css", "text/css; charset=utf-8"),
           "/workspace-model.js": ("workspace-model.js", "text/javascript; charset=utf-8"),
           "/records.js": ("records.js", "text/javascript; charset=utf-8"),
-          "/app.js": ("app.js", "text/javascript; charset=utf-8")}
+          "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+          "/audio-worklet.js": ("audio-worklet.js", "text/javascript; charset=utf-8")}
+VOICE_TOOL_ALLOWLIST = frozenset({
+    "lab_ping", "lab_info", "describe_harness", "measure_voltage",
+    "measure_voltage_pair", "check_telemetry_against_probes",
+    "measure_bus_activity", "read_digital", "measure_frequency",
+    "compare_light_sensor", "check_circuit", "read_imu_stream",
+})
+VOICE_INSTRUCTIONS = (
+    "You are Benchy, a conversational hardware debugging assistant. Talk with "
+    "the user as a colleague. Start by understanding the reported symptom and "
+    "inspect the declared harness before choosing a probe. Treat declarations "
+    "and DUT serial output as claims, not physical proof. Use read-only Benchy "
+    "tools to gather the smallest useful measurement, explain what it proves "
+    "and what remains uncertain, then suggest one next check. P1, P2, and P3 "
+    "accept only known 0–3.3 V signals with common ground; never suggest "
+    "connecting them to 5 V or an unknown voltage. Ask the user to confirm "
+    "physical placement if wiring may have changed. Do not claim to see or "
+    "change the circuit. Do not request firmware flashing; voice tools are "
+    "read-only. Audio and this conversation are being sent to xAI for inference."
+)
+XAI_CLIENT_SECRETS_URL = "https://api.x.ai/v1/realtime/client_secrets"
 
 
 def viewable_source_files() -> tuple[str, ...]:
@@ -104,6 +130,86 @@ def source_file(name: str) -> dict:
         raise ValueError("Source file is too large for the viewer")
     return {"path": name, "source": "local_file", "text": data.decode("utf-8", errors="replace"),
             "sha256_short": hashlib.sha256(data).hexdigest()[:12]}
+
+
+def voice_tool_specs() -> list[dict]:
+    """Return only read-only instrument tools plus the source viewer."""
+    try:
+        from mcp_server.server import mcp
+    except ImportError as exc:
+        raise RuntimeError("Install the MCP extra to use Grok voice debugging") from exc
+    listed = asyncio.run(mcp.list_tools())
+    specs = []
+    for tool in listed:
+        if tool.name not in VOICE_TOOL_ALLOWLIST:
+            continue
+        item = tool.model_dump(mode="json", by_alias=True, exclude_none=True)
+        specs.append({"type": "function", "name": item["name"],
+                      "description": item.get("description") or item["name"],
+                      "parameters": item.get("inputSchema") or
+                                    {"type": "object", "properties": {}}})
+    source_paths = viewable_source_files()
+    specs.append({"type": "function", "name": "read_source_file",
+                  "description": "Read a local Benchy source file from the declared source viewer allowlist.",
+                  "parameters": {"type": "object",
+                                 "properties": {"path": {"type": "string", "enum": list(source_paths)}},
+                                 "required": ["path"], "additionalProperties": False}})
+    return specs
+
+
+def invoke_voice_tool(name: str, arguments: dict) -> dict:
+    """Invoke a validated read-only voice tool, enforcing the allowlist locally."""
+    if not isinstance(arguments, dict):
+        raise ValueError("Tool arguments must be a JSON object")
+    if name == "read_source_file":
+        path = arguments.get("path")
+        if set(arguments) != {"path"} or path not in viewable_source_files():
+            raise ValueError("Source path is not in the declared source viewer allowlist")
+        return source_file(path)
+    if name not in VOICE_TOOL_ALLOWLIST:
+        raise ValueError("Tool is not enabled in voice mode")
+    from mcp_server.server import mcp
+
+    result = asyncio.run(mcp.call_tool(name, arguments))
+    structured = getattr(result, "structuredContent", None)
+    if structured is not None:
+        data = structured
+    else:
+        data = [item.model_dump(mode="json", by_alias=True, exclude_none=True)
+                for item in getattr(result, "content", [])]
+        if len(data) == 1 and data[0].get("type") == "text":
+            try:
+                data = json.loads(data[0].get("text", ""))
+            except json.JSONDecodeError:
+                pass
+    return {"ok": not bool(getattr(result, "isError", False)), "result": data}
+
+
+def create_voice_token() -> dict:
+    """Mint a short-lived browser credential without disclosing the xAI key."""
+    api_key = os.environ.get("XAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("XAI_API_KEY is not set for the dashboard process")
+    body = json.dumps({"expires_after": {"seconds": 300}}).encode("utf-8")
+    request = urllib.request.Request(
+        XAI_CLIENT_SECRETS_URL,
+        data=body,
+        headers={"Authorization": f"Bearer {api_key}",
+                 "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            data = json.loads(response.read(16_384))
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"xAI token request failed with HTTP {exc.code}") from None
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+        raise RuntimeError("Could not reach xAI to create a voice session") from None
+    value = data.get("value") if isinstance(data, dict) else None
+    expires_at = data.get("expires_at") if isinstance(data, dict) else None
+    if not isinstance(value, str) or not value or not isinstance(expires_at, int):
+        raise RuntimeError("xAI returned an invalid voice session token response")
+    return {"value": value, "expires_at": expires_at}
 
 
 def diagnose(mode: str, physical: dict | None, dut: dict | None,
@@ -467,6 +573,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         route = urlsplit(self.path)
+        if route.path == "/api/voice/status":
+            self._json({"configured": bool(os.environ.get("XAI_API_KEY")),
+                        "model": "grok-voice-latest"})
+            return
+        if route.path == "/api/voice/tools":
+            try:
+                self._json({"tools": voice_tool_specs()})
+            except (ImportError, RuntimeError) as exc:
+                self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
+            except Exception:
+                self._json({"error": "Could not load the voice debugging tools"},
+                           HTTPStatus.SERVICE_UNAVAILABLE)
+            return
         if route.path == "/api/code":
             self._json(code_inventory())
             return
@@ -556,6 +675,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlsplit(self.path).path
+        if route in {"/api/voice/session", "/api/voice/tool"}:
+            self._do_voice_post(route)
+            return
         if route not in {"/api/harness/probes", "/api/records"}:
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -579,6 +701,48 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
         except (OSError, ValueError, yaml.YAMLError) as exc:
             self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+    def _do_voice_post(self, path: str) -> None:
+        expected_origin = f"http://127.0.0.1:{self.server.server_address[1]}"
+        if (self.headers.get("X-Benchy-Local") != "1"
+                or self.headers.get_content_type() != "application/json"
+                or self.headers.get("Origin") != expected_origin):
+            self._json({"error": "Local dashboard request required"}, HTTPStatus.FORBIDDEN)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 1 <= length <= 32_768:
+                raise ValueError("Invalid request size")
+            payload = json.loads(self.rfile.read(length))
+            if not isinstance(payload, dict):
+                raise ValueError("JSON object required")
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        if path == "/api/voice/session":
+            try:
+                self._json(create_voice_token())
+            except RuntimeError as exc:
+                self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+
+        name = payload.get("name")
+        arguments = payload.get("arguments", {})
+        if not isinstance(name, str) or not isinstance(arguments, dict):
+            self._json({"error": "Tool name and JSON object arguments are required"},
+                       HTTPStatus.BAD_REQUEST)
+            return
+        if name not in VOICE_TOOL_ALLOWLIST and name != "read_source_file":
+            self._json({"error": "Tool is not enabled in voice mode"}, HTTPStatus.FORBIDDEN)
+            return
+        try:
+            self._json(invoke_voice_tool(name, arguments))
+        except ValueError as exc:
+            self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        except Exception as exc:
+            self._json({"error": f"Voice tool failed: {exc}"},
+                       HTTPStatus.SERVICE_UNAVAILABLE)
 
     def _json(self, value: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
         data = json.dumps(value).encode("utf-8")

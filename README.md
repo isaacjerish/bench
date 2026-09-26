@@ -245,6 +245,42 @@ Named demo checks remain available through the CLI and MCP tools. Edit
 `harness/current.yaml` after changing the design's DUT metadata or source
 files; use the page's connection editor for P1/P2/P3 declarations.
 
+### Grok voice debugging
+
+The Investigation panel includes a microphone button for live speech-to-speech
+debugging. Voice mode needs the MCP extra and an `XAI_API_KEY` environment
+variable in the shell that launches the dashboard. The key stays on the server;
+the browser receives a short-lived xAI voice token. Set the variable before
+starting or restarting the dashboard.
+
+In macOS zsh, enter the key without echoing it or adding it to shell history:
+
+```zsh
+read -s "XAI_API_KEY?Enter xAI API key: "
+export XAI_API_KEY
+printf "\n"
+```
+
+In Windows PowerShell, enter it at a hidden prompt for the current session:
+
+```powershell
+$secure = Read-Host "xAI API key" -AsSecureString
+$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+try {
+    $env:XAI_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+} finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+}
+```
+
+Launch the dashboard from that same terminal, open <http://127.0.0.1:8765>,
+and click **Start conversation**. Grok can read the declared harness and
+allowlisted source files and run read-only physical checks. It cannot build or
+flash firmware through voice mode. Audio, dashboard evidence, and any source
+files Grok reads are sent to xAI while the conversation is active. Voice
+transcripts and audio are not saved locally and are cleared when you stop.
+Audio API usage is billed by xAI.
+
 `./scripts/python.sh -m benchos.cli flash-plan` resolves the declared DUT
 sketch and unique USB device without uploading anything. `build-dut` compiles
 the declared sketch into an isolated evidence directory; `flash-dut` also
