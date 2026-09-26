@@ -32,6 +32,11 @@ not mocked values.
 | CLI while dashboard runs | S3 measured 2.192 V; shared serial lock allowed both processes to use the port |
 | Dashboard preview fault | Clearly marked sample values 0.000 V vs 2.207 V showed FAIL; no hardware read represented as live |
 | Monochrome dashboard redesign | Four generated overhead breadboard scenes served locally; live light view showed S3 2.180 V vs C6 2.245 V, PASS |
+| 2026-09-26 live light comparison before IMU flash | C6 reported 2.249 V, S3 measured 2.177 V, difference 0.072 V, PASS |
+| MPU on C6 SDA=IO5, SCL=IO7 | C6 booted and I²C `WHO_AM_I=0x70` (consistent with MPU-6500); X/Y values changed during user tilt |
+| MPU Z-axis raw check | Repeated `7FFF` / +2.000 g, including after sensor reset and full C6 USB power cycle; accelerometer config readback `0x00`; clipped-axis fault, **not** a healthy 3-axis stream |
+| Live IMU dashboard diagnosis | `fail`, “Accelerometer axis clipped”, `saturated_axes: ["z"]`; source marked as C6 report, not S3 physical proof |
+| Host tests after clipped-axis dashboard check | 22 passed |
 
 The resistor divider is nominally 1:2. These values show a working physical
 measurement loop, but the ADC and resistor tolerances do not make it a
@@ -42,14 +47,15 @@ of the Elegoo module's exact input/output labels and power source. The
 three-wire SG90 needs no external H-bridge; its red power lead must go to an
 appropriate separate 5 V source, not an ESP32 rail.
 
-The C6 currently runs the photoresistor demo with `DEMO_FAULT=0`. Its sensor
-node is connected to S3 P1. The earlier LED sketch is still available, but the
+The C6 currently runs the MPU demo with `DEMO_FAULT=0`. The photoresistor sensor
+node remains connected to S3 P1, but the C6 must be reflashed with
+`light_sensor_demo` before another light comparison. The earlier LED sketch is still available, but the
 LED/resistor branch and C6 GPIO20 wire have been removed for this test. The
 servo sketch remains in `dut_examples/servo_demo` and can be reflashed when a
 suitable servo power source is available.
 
-The MPU-family I²C sketch compiled for the C6, but the sensor has not yet been
-wired or physically validated. The web dashboard is running locally at
-`http://127.0.0.1:8765` on the original Mac; it follows the current light
-circuit. The new MCP `check_circuit` and `read_imu_stream` tools passed schema
-tests, but the IMU tool awaits a real connected sensor.
+The MPU is wired and responds over I²C, but the Z-axis is saturated and the
+stream is not independently confirmed by the S3. The dashboard server is
+available via `./scripts/python.sh -m benchos.dashboard` when started; do not
+assume the previous process is still running. `read_imu_stream` returns the
+C6's claim rather than physical proof from P1.

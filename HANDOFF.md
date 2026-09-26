@@ -30,11 +30,15 @@ real hardware results. The key directories are:
 - C6 GPIO20 and the LED/resistor branch have been removed from T. A
   photoresistor connects C6 3V3 to T; a separate 10 kΩ resistor connects T to
   shared GND; C6 GPIO1 also measures T. The S3 P1 divider remains in place.
-- C6 currently runs `light_sensor_demo` with `DEMO_FAULT=0`.
-- Both USB boards were present on 2026-09-26. The live `light-compare` check
+- C6 currently runs `imu_demo` with `DEMO_FAULT=0`, SDA on IO5 and SCL on IO7.
+  The photoresistor circuit remains wired, but `light-compare` needs
+  `light_sensor_demo` reflashed before it can pass again.
+- Both USB boards were present on 2026-09-26. Before the C6 was switched to
+  `imu_demo`, the live `light-compare` check
   passed: S3 P1 measured 2.177 V, C6 reported 2.249 V, a 0.072 V difference
   against the configured 0.45 V tolerance. The dashboard server was listening
-  on `127.0.0.1:8765` at that time. These are point-in-time observations;
+  on `127.0.0.1:8765` at that time; check whether it is still running before
+  opening the URL. These are point-in-time observations;
   re-run the command below after changing wiring or restarting the computer.
 - SG90 is **not connected**. It needs a separate regulated 5 V supply rated for
   at least 2 A with accessible +5 V and GND. The Elegoo breadboard module has
@@ -96,30 +100,40 @@ SG90 shaft movement. `read_imu_stream` is a C6 report until the MPU is wired
 and tested; it is not independent S3 confirmation. The P1 ADC is approximate,
 and P1 must never touch a node above 3.3 V.
 
-## Next physical step: add the MPU while keeping light validation working
+## Current MPU wiring and next validation
 
 The MPU board photographed by the user is marked `MPU-9250/6500/9255`;
-its exact chip has not been identified. First check that **C6 GPIO6/IO6 and
-GPIO7/IO7 are exposed and unused**. With both ESP32 USB cables disconnected,
-add these wires; keep the current photoresistor, test row T, and P1 divider
-untouched:
+the I²C `WHO_AM_I` register now reads `0x70`, consistent with MPU-6500. The user reports the MPU is now wired,
+with SDA on **C6 IO5** because a wire is stuck in IO6; SCL is on IO7. The
+photoresistor, test row T, and P1 divider remain untouched. `config.h` was
+changed to match this reported wiring. The C6 booted, the MPU responded over
+I²C, and X/Y values changed while the user tilted it. **The Z channel is
+faulty or clipped:** its raw register bytes stayed `7F FF` (`32767`, reported
+as +2.000 g) through repeated reads and after a device reset. The
+accelerometer configuration register reads `0x00`, the expected ±2 g range.
+The same `7FFF` result persisted after the user unplugged and reconnected the
+C6 USB cable, fully power-cycling the MPU.
+Do not present this as a healthy 3-axis motion sensor. The current dashboard
+flags a saturated axis, and the MCP stream is still marked as a DUT claim.
+The user's physical wiring is:
 
 | MPU pin | C6 / breadboard connection |
 | --- | --- |
 | VCC | C6 3V3 |
 | GND | Shared GND rail |
-| SDA/SDI | C6 GPIO6/IO6 |
+| SDA/SDI | C6 GPIO5/IO5 |
 | SCL/SCLK | C6 GPIO7/IO7 |
 | ADO/SDO | Shared GND rail |
 | NCS | C6 3V3 |
 
-Leave EDA, ECL, INT, and FSYNC open. Reconnect USB after checking the pin
-labels and wiring. Do not feed this breakout 5 V or the 9 V barrel input.
-Then flash `imu_demo`, read the detected I²C address/WHO_AM_I and acceleration,
-and tilt the board to confirm that the axes change. If IO6 or IO7 is absent or
-already occupied, inspect the board labels and change both the firmware pin
-definitions and wiring before flashing. Full procedure and failure cases are
-in `dut_examples/imu_demo/README.md`.
+Leave EDA, ECL, INT, and FSYNC open. Do not feed this breakout 5 V or the 9 V
+barrel input. GPIO5 is an
+ESP32-C6 strapping pin, so if the C6 fails to boot with the MPU attached,
+unplug USB, move SDA to another exposed free GPIO, update `config.h`, and
+retry. Full procedure and failure cases are in `dut_examples/imu_demo/README.md`.
+Next sensor step: use a different MPU board or treat this one as a known bad
+DUT for a failure-detection demo. To restore the proven light demo, flash
+`light_sensor_demo` on the C6 without changing the current photoresistor wiring.
 
 For the SG90 motion demo, obtain a separately regulated 5 V supply with
 accessible +5 V and GND and adequate servo current. The found Elegoo module
@@ -171,8 +185,8 @@ and are not included in Git.
 
 ## Remaining work
 
-0. Confirm C6 GPIO6/IO6 and GPIO7/IO7 are exposed; wire and validate the MPU
-   as described in `dut_examples/imu_demo/README.md`.
+0. Choose a replacement MPU or use the confirmed Z saturation as a bad-sensor
+   demo. I²C electrical probing via S3 P1 is still pending.
 1. Obtain and identify the separate 5 V servo supply.
 2. Disconnect the photoresistor circuit, wire SG90 yellow to C6 GPIO20/T, brown to the
    shared GND rail, red to the separate +5 V, and supply GND to the shared rail.

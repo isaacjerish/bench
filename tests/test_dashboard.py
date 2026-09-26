@@ -26,6 +26,12 @@ def test_imu_dut_report_is_not_physical_pass():
     assert result["state"] == "unverified"
 
 
+def test_imu_saturated_axis_is_flagged():
+    result = diagnose("imu", None, {"magnitude_g": 2.2, "saturated_axes": ["z"]})
+    assert result["state"] == "fail"
+    assert "z" in result["detail"]
+
+
 def test_imu_stream_line_carries_chip_id():
     match = IMU_LINE.fullmatch("IMU_ACCEL_G x=0.120 y=-0.080 z=0.990 id=0x71")
     assert match is not None

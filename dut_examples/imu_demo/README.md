@@ -11,7 +11,7 @@ With both boards disconnected from USB, wire the MPU breakout to the C6:
 | --- | --- |
 | VCC | C6 3V3 |
 | GND | Shared GND rail |
-| SDA/SDI | C6 GPIO6 / IO6 |
+| SDA/SDI | C6 GPIO5 / IO5 (current build; IO6 is obstructed) |
 | SCL/SCLK | C6 GPIO7 / IO7 |
 | ADO/SDO | Shared GND rail (address 0x68) |
 | NCS | C6 3V3 (select I²C) |
@@ -23,7 +23,11 @@ photoresistor circuit may stay wired to C6 GPIO1 and BenchOS P1 while trying
 the IMU. Do not move P1 to an I²C wire while it is still connected to the
 photoresistor divider.
 
-After confirming the C6 exposes GPIO6 and GPIO7, compile and flash:
+GPIO5 is a C6 boot strapping pin. This particular board booted and answered
+over I²C with SDA on IO5, but if a later boot fails, move SDA to another free
+exposed GPIO and update `config.h` before reflashing.
+
+After confirming the C6 exposes GPIO5 and GPIO7, compile and flash:
 
 ```sh
 ./scripts/flash_dut.sh imu_demo /dev/cu.usbmodemYYYY
@@ -39,3 +43,10 @@ SDA/SCL electrical activity with P1 after isolating T from the light sensor.
 If `IMU_ERROR no_device_at_0x68_or_0x69` appears, first check VCC, GND,
 SDA/SCL orientation, NCS, and ADO. I²C also requires pullups to 3.3 V; we
 can add suitable resistors if the breakout does not already provide them.
+
+On the current physical module, `WHO_AM_I=0x70` is consistent with an
+MPU-6500, but the Z register repeatedly returned `0x7FFF` (+2.000 g) even
+after a software reset while X/Y changed. The firmware prints `IMU_RAW`
+and the accelerometer configuration readback to expose this issue. The
+dashboard flags a saturated axis. The fault persisted after a full C6 USB
+power cycle. Do not treat the current three-axis acceleration stream as healthy.

@@ -46,12 +46,25 @@ void setup() {
     Serial.println("IMU_ERROR no_device_at_0x68_or_0x69");
     return;
   }
-  if (!writeRegister(imuAddress, PWR_MGMT_1, 0x00) ||
+  if (!writeRegister(imuAddress, PWR_MGMT_1, 0x80)) {
+    Serial.println("IMU_ERROR reset_failed");
+    imuAddress = 0;
+    return;
+  }
+  delay(150);
+  if (!writeRegister(imuAddress, PWR_MGMT_1, 0x01) ||
       !writeRegister(imuAddress, ACCEL_CONFIG, 0x00)) {
     Serial.println("IMU_ERROR configuration_failed");
     imuAddress = 0;
     return;
   }
+  uint8_t accelConfig = 0xFF;
+  if (!readRegisters(imuAddress, ACCEL_CONFIG, &accelConfig, 1)) {
+    Serial.println("IMU_ERROR config_readback_failed");
+    imuAddress = 0;
+    return;
+  }
+  Serial.printf("IMU_CONFIG accel=0x%02X expected=0x00\n", accelConfig);
   delay(100);
 }
 
@@ -69,6 +82,14 @@ void loop() {
   const int16_t x = static_cast<int16_t>((data[0] << 8) | data[1]);
   const int16_t y = static_cast<int16_t>((data[2] << 8) | data[3]);
   const int16_t z = static_cast<int16_t>((data[4] << 8) | data[5]);
+  uint8_t accelConfig = 0xFF;
+  if (!readRegisters(imuAddress, ACCEL_CONFIG, &accelConfig, 1)) {
+    Serial.println("IMU_ERROR config_readback_failed");
+    delay(IMU_REPORT_MS);
+    return;
+  }
+  Serial.printf("IMU_RAW x=%d y=%d z=%d bytes=%02X%02X_%02X%02X_%02X%02X accel_config=0x%02X\n",
+                x, y, z, data[0], data[1], data[2], data[3], data[4], data[5], accelConfig);
   // MPU-9250/6500 default accelerometer range is +/-2 g (16384 LSB/g).
   const float ax = DEMO_FAULT == 1 ? 0.0f : x / 16384.0f;
   const float ay = DEMO_FAULT == 1 ? 0.0f : y / 16384.0f;

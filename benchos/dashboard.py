@@ -69,6 +69,10 @@ def diagnose(mode: str, physical: dict | None, dut: dict | None) -> dict:
         if dut is None:
             return {"state": "unknown", "title": "Awaiting IMU stream",
                     "detail": "Connect the C6 and flash the IMU demo."}
+        if dut.get("saturated_axes"):
+            axes = ", ".join(dut["saturated_axes"])
+            return {"state": "fail", "title": "Accelerometer axis clipped",
+                    "detail": f"The DUT reports {axes} at the ±2 g limit. Check raw registers and repeat with the board still."}
         return {"state": "unverified", "title": "Motion stream detected",
                 "detail": "These values come from the DUT. Move P1 to an isolated I²C line for independent electrical evidence."}
     raise ValueError(f"Unknown mode: {mode}")
@@ -95,6 +99,8 @@ def read_imu_report(port: str, timeout_s: float = 2.5) -> dict:
                         raise BenchError("Invalid IMU acceleration report")
                     return {"x_g": axes[0], "y_g": axes[1], "z_g": axes[2],
                             "magnitude_g": round(math.sqrt(sum(x * x for x in axes)), 3),
+                            "saturated_axes": [axis for axis, value in zip("xyz", axes)
+                                               if abs(value) >= 1.999],
                             **(found or {}),
                             **({"who_am_i": "0x" + match.group(4).upper()}
                                if match.group(4) else {})}
