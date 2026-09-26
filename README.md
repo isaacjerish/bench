@@ -198,7 +198,8 @@ same physical sensor node at P1. The CLI command `light-compare --dut-port
 readings and can expose a firmware fault that falsely reports zero. Remove the
 LED branch and C6 GPIO20-to-T wire before wiring the photoresistor as shown
 in the demo README. A difference test needs enough light to bring the sensor
-node above 0.3 V. This demo is compiled but awaiting physical validation.
+node above 0.3 V. This demo was physically validated: a false zero report
+failed against a real 2.207 V reading, and the repaired firmware passed.
 
 ## Limits and common failures
 

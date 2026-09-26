@@ -10,8 +10,8 @@ real hardware results. The key directories are:
 - `benchos/`: Python serial client, CLI, response parsing, and physical checks.
 - `mcp_server/`: local Codex MCP tools backed by the S3.
 - `dut_examples/servo_demo/`: ESP32-C6 servo PWM and three selectable faults.
-- `dut_examples/led_demo/`: currently flashed 2 Hz visible LED demo.
-- `dut_examples/light_sensor_demo/`: prepared photoresistor cross-check demo.
+- `dut_examples/led_demo/`: tested 2 Hz visible LED demo.
+- `dut_examples/light_sensor_demo/`: photoresistor cross-check demo, currently flashed.
 - `physical_tests/`: YAML pass/fail checks.
 - `scripts/`: board detection, flashing, and test commands.
 - `tests/`: Python unit tests.
@@ -22,8 +22,10 @@ real hardware results. The key directories are:
 - C6 DUT: `/dev/cu.usbmodem1101` on the original Mac. These port names can change.
 - S3 GPIO1 measures divider midpoint M. Two 10 kΩ resistors connect test row T
   to M to GND. S3 GPIO2 directly observes T. S3 and C6 GND share a rail.
-- C6 GPIO20 goes to T. A 220–330 Ω resistor and LED connect T to GND.
-- C6 currently runs `led_demo`; LED visibly blinks and P1 measures 2.0 Hz PASS.
+- C6 GPIO20 and the LED/resistor branch have been removed from T. A
+  photoresistor connects C6 3V3 to T; a separate 10 kΩ resistor connects T to
+  shared GND; C6 GPIO1 also measures T. The S3 P1 divider remains in place.
+- C6 currently runs `light_sensor_demo` with `DEMO_FAULT=0`.
 - SG90 is **not connected**. It needs a separate regulated 5 V supply rated for
   at least 2 A with accessible +5 V and GND. The Elegoo breadboard module has
   no known input adapter or verified current rating. Do not use an ESP32 GPIO,
@@ -41,9 +43,10 @@ real hardware results. The key directories are:
 - All three deliberate faults were physically detected: wrong pin 0 Hz,
   stuck-low 0 Hz/0 V/LOW, wrong frequency 312 Hz. Repaired PWM passed.
 - LED firmware was restored after fault testing and remeasured at 2.0 Hz PASS.
+- Photoresistor cross-check: normal 2.274 V reported / 2.192 V physical PASS;
+  false-zero 0.000 V reported / 2.207 V physical FAIL; repaired 2.261 V
+  reported / 2.207 V physical PASS.
 - Python tests: run `./scripts/python.sh -m pytest -q` for the current count.
-- A photoresistor comparison demo is being added; check `VALIDATION.md` for
-  whether it has been physically tested before presenting it as validated.
 
 ## Fast commands on the original Mac
 
@@ -51,12 +54,13 @@ Run in the repository directory:
 
 ```sh
 ./scripts/detect_boards.sh
-./scripts/physical_check.sh led_blink /dev/cu.usbmodem1201
+./scripts/python.sh -m benchos.cli --port /dev/cu.usbmodem1201 light-compare --dut-port /dev/cu.usbmodem1101
 ./scripts/python.sh -m pytest -q
 ```
 
-To switch the C6 to the servo signal demo after disconnecting the LED and
-confirming the SG90 supply and wiring:
+To switch the C6 to the servo signal demo, disconnect the photoresistor and
+its additional 10 kΩ pull-down from T, remove C6 GPIO1 from T, then connect
+C6 GPIO20 to T. Confirm the SG90 supply and wiring before attaching the motor:
 
 ```sh
 ./scripts/flash_dut.sh servo_demo /dev/cu.usbmodem1101
@@ -89,7 +93,7 @@ and are not included in Git.
 ## Remaining work
 
 1. Obtain and identify the separate 5 V servo supply.
-2. Disconnect the LED branch, wire SG90 yellow to C6 GPIO20/T, brown to the
+2. Disconnect the photoresistor circuit, wire SG90 yellow to C6 GPIO20/T, brown to the
    shared GND rail, red to the separate +5 V, and supply GND to the shared rail.
 3. Flash normal servo firmware, run the physical signal check, enable sweep,
    and verify actual SG90 movement. Record the result in `VALIDATION.md`.

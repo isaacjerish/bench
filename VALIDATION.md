@@ -24,6 +24,9 @@ not mocked values.
 | C6 LED fallback on GPIO20 | 2.0 Hz, 4 edges/2000 ms, physical PASS |
 | C6 LED fallback with LED and resistor attached | User confirmed visible blinking; P1 remeasured 2.0 Hz, 4 edges/2000 ms, physical PASS |
 | LED firmware restored after fault checks | P1 measured 2.0 Hz, 4 edges/2000 ms, physical PASS |
+| Photoresistor normal C6/S3 agreement | C6 reported 2.274 V; S3 measured 2.192 V; difference 0.082 V, PASS |
+| Photoresistor false-zero firmware fault | C6 reported 0.000 V; S3 measured 2.207 V; difference 2.207 V, FAIL as intended |
+| Photoresistor repaired C6/S3 agreement | C6 reported 2.261 V; S3 measured 2.207 V; difference 0.054 V, PASS |
 
 The resistor divider is nominally 1:2. These values show a working physical
 measurement loop, but the ADC and resistor tolerances do not make it a
@@ -34,6 +37,8 @@ of the Elegoo module's exact input/output labels and power source. The
 three-wire SG90 needs no external H-bridge; its red power lead must go to an
 appropriate separate 5 V source, not an ESP32 rail.
 
-The C6 currently runs the LED fallback sketch with a visibly blinking LED.
-The servo sketch remains in `dut_examples/servo_demo` and can be reflashed
-when a suitable servo power source is available.
+The C6 currently runs the photoresistor demo with `DEMO_FAULT=0`. Its sensor
+node is connected to S3 P1. The earlier LED sketch is still available, but the
+LED/resistor branch and C6 GPIO20 wire have been removed for this test. The
+servo sketch remains in `dut_examples/servo_demo` and can be reflashed when a
+suitable servo power source is available.
