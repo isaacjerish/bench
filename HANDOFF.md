@@ -28,7 +28,11 @@ real hardware results. The key directories are:
 - C6 currently runs `light_sensor_demo` with `DEMO_FAULT=0`.
 - SG90 is **not connected**. It needs a separate regulated 5 V supply rated for
   at least 2 A with accessible +5 V and GND. The Elegoo breadboard module has
-  no known input adapter or verified current rating. Do not use an ESP32 GPIO,
+  a newly located barrel wall plug. Its front is marked `Vin: 6.5V-9V` with
+  selectable 3.3 V/5 V rails; the plug's output rating, module model, and
+  module output-current rating still need inspection. If the module is MB-V2,
+  its 700 mA output rating is below the SG90 maker's possible 2 A draw. Do not
+  use an ESP32 GPIO,
   3.3 V pin, or board 5 V header to power the servo.
 
 ## What has been validated

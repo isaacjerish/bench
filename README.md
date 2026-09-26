@@ -154,10 +154,15 @@ For the SG90 movement test, obtain a **regulated 5 V source rated for at least
 with a USB power breakout). Keep the servo unplugged until those two terminals
 are positively identified. The Elegoo breadboard power module cannot be used
 without an appropriate input source, and its output current capability has
-not been verified for this particular module. A 5 V header on an ESP32 dev
+not been verified for this particular module. If it is labeled **MB-V2**, its
+[datasheet](https://pgccphy.net/1020/datasheets/ELEGOO%20Breadboard%20Power%20Supply%20Module.pdf)
+limits output to 700 mA, below the SG90 maker's stated possible 2 A draw; do
+not use that module for SG90 power. A 5 V header on an ESP32 dev
 board is part of its board power path; do not treat it as the separate servo
-supply. With power disconnected, remove the LED and resistor branch from T,
-then connect SG90 yellow to T/GPIO20, brown to the common GND rail, and red
+supply. With power disconnected, remove whichever DUT branch is presently on T
+(currently the photoresistor, its extra 10 kΩ pull-down, and C6 GPIO1). Keep
+the S3's two-resistor divider. Then connect C6 GPIO20 and SG90 yellow to T,
+brown to the common GND rail, and red
 to the separate +5 V terminal. Connect the supply GND to the common rail.
 After wiring has been checked, flash `servo_demo`, power the supply, and run
 `./scripts/physical_check.sh servo_signal <S3-port>` before enabling
