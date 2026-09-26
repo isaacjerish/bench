@@ -31,6 +31,7 @@ real hardware results. The key directories are:
   photoresistor connects C6 3V3 to T; a separate 10 kΩ resistor connects T to
   shared GND; C6 GPIO1 also measures T. The S3 P1 divider remains in place.
 - C6 currently runs `imu_demo` with `DEMO_FAULT=0`, SDA on IO5 and SCL on IO7.
+  The user swapped in a second MPU breakout on the same reported wiring.
   The photoresistor circuit remains wired, but `light-compare` needs
   `light_sensor_demo` reflashed before it can pass again.
 - Both USB boards were present on 2026-09-26. Before the C6 was switched to
@@ -96,26 +97,28 @@ repaired cases above were physically demonstrated; see `VALIDATION.md` for
 recorded measurements. A zero-edge reading alone does not identify a unique
 root cause. BenchOS cannot yet map unknown wiring, capture/decode I²C, inspect
 multiple nodes simultaneously, measure current or 5 V directly, or confirm
-SG90 shaft movement. `read_imu_stream` is a C6 report until the MPU is wired
-and tested; it is not independent S3 confirmation. The P1 ADC is approximate,
+SG90 shaft movement. `read_imu_stream` is a C6 report, not independent S3
+confirmation of the I²C lines. The P1 ADC is approximate,
 and P1 must never touch a node above 3.3 V.
 
-## Current MPU wiring and next validation
+## Current MPU wiring and validation
 
 The MPU board photographed by the user is marked `MPU-9250/6500/9255`;
-the I²C `WHO_AM_I` register now reads `0x70`, consistent with MPU-6500. The user reports the MPU is now wired,
-with SDA on **C6 IO5** because a wire is stuck in IO6; SCL is on IO7. The
-photoresistor, test row T, and P1 divider remain untouched. `config.h` was
-changed to match this reported wiring. The C6 booted, the MPU responded over
-I²C, and X/Y values changed while the user tilted it. **The Z channel is
-faulty or clipped:** its raw register bytes stayed `7F FF` (`32767`, reported
-as +2.000 g) through repeated reads and after a device reset. The
-accelerometer configuration register reads `0x00`, the expected ±2 g range.
-The same `7FFF` result persisted after the user unplugged and reconnected the
-C6 USB cable, fully power-cycling the MPU.
-Do not present this as a healthy 3-axis motion sensor. The current dashboard
-flags a saturated axis, and the MCP stream is still marked as a DUT claim.
-The user's physical wiring is:
+both tested modules returned I²C `WHO_AM_I=0x70`, consistent with MPU-6500.
+The user wired SDA to **C6 IO5** because a wire is stuck in IO6; SCL is on
+IO7. The photoresistor, test row T, and P1 divider remain untouched.
+`config.h` matches this wiring. The first module returned a fixed Z raw value
+of `7FFF` (+2.000 g) even at rest, after a software reset, and after USB power
+cycling. Its accelerometer range register correctly read `0x00` (±2 g).
+
+The user swapped in a **second module** without changing C6 pins or firmware.
+At rest, it reported about X=0.000 g, Y=0.013 g, Z=1.086 g. Held on its edge,
+it reported about X=-0.988 g, Y=0.017 g, Z=0.133 g, magnitude=0.997 g.
+This is a plausible gravity-vector shift and no axis is saturated. The same
+wiring working with the replacement strongly implicates the first module,
+though swapping also reseated the physical contacts. The dashboard now shows
+the second module as an **unverified DUT stream** rather than a physical S3
+pass; P1 has not probed the I²C bus. The current wiring is:
 
 | MPU pin | C6 / breadboard connection |
 | --- | --- |
@@ -131,8 +134,8 @@ barrel input. GPIO5 is an
 ESP32-C6 strapping pin, so if the C6 fails to boot with the MPU attached,
 unplug USB, move SDA to another exposed free GPIO, update `config.h`, and
 retry. Full procedure and failure cases are in `dut_examples/imu_demo/README.md`.
-Next sensor step: use a different MPU board or treat this one as a known bad
-DUT for a failure-detection demo. To restore the proven light demo, flash
+The first module can be kept as a known bad sensor for a failure-detection
+demo. To restore the proven light demo, flash
 `light_sensor_demo` on the C6 without changing the current photoresistor wiring.
 
 For the SG90 motion demo, obtain a separately regulated 5 V supply with
@@ -147,9 +150,12 @@ Run in the repository directory:
 
 ```sh
 ./scripts/detect_boards.sh
-./scripts/python.sh -m benchos.cli --port /dev/cu.usbmodem1201 light-compare --dut-port /dev/cu.usbmodem1101
 ./scripts/python.sh -m pytest -q
 ```
+
+The C6 currently runs `imu_demo`; use the dashboard Motion sensor tab or
+`read_imu_stream` MCP tool for current readings. Reflash `light_sensor_demo`
+before running `light-compare` again.
 
 To switch the C6 to the servo signal demo, disconnect the photoresistor and
 its additional 10 kΩ pull-down from T, remove C6 GPIO1 from T, then connect
@@ -185,8 +191,8 @@ and are not included in Git.
 
 ## Remaining work
 
-0. Choose a replacement MPU or use the confirmed Z saturation as a bad-sensor
-   demo. I²C electrical probing via S3 P1 is still pending.
+0. I²C electrical probing via S3 P1 is still pending. The replacement MPU has
+   already passed the still/tilted plausibility check through C6 serial.
 1. Obtain and identify the separate 5 V servo supply.
 2. Disconnect the photoresistor circuit, wire SG90 yellow to C6 GPIO20/T, brown to the
    shared GND rail, red to the separate +5 V, and supply GND to the shared rail.

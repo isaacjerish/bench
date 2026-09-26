@@ -33,9 +33,12 @@ not mocked values.
 | Dashboard preview fault | Clearly marked sample values 0.000 V vs 2.207 V showed FAIL; no hardware read represented as live |
 | Monochrome dashboard redesign | Four generated overhead breadboard scenes served locally; live light view showed S3 2.180 V vs C6 2.245 V, PASS |
 | 2026-09-26 live light comparison before IMU flash | C6 reported 2.249 V, S3 measured 2.177 V, difference 0.072 V, PASS |
-| MPU on C6 SDA=IO5, SCL=IO7 | C6 booted and I²C `WHO_AM_I=0x70` (consistent with MPU-6500); X/Y values changed during user tilt |
-| MPU Z-axis raw check | Repeated `7FFF` / +2.000 g, including after sensor reset and full C6 USB power cycle; accelerometer config readback `0x00`; clipped-axis fault, **not** a healthy 3-axis stream |
-| Live IMU dashboard diagnosis | `fail`, “Accelerometer axis clipped”, `saturated_axes: ["z"]`; source marked as C6 report, not S3 physical proof |
+| First MPU on C6 SDA=IO5, SCL=IO7 | C6 booted and I²C `WHO_AM_I=0x70` (consistent with MPU-6500); X/Y values changed during user tilt |
+| First MPU Z-axis raw check | Repeated `7FFF` / +2.000 g, including after sensor reset and full C6 USB power cycle; accelerometer config readback `0x00`; clipped-axis fault, **not** a healthy 3-axis stream |
+| First MPU live dashboard diagnosis | `fail`, “Accelerometer axis clipped”, `saturated_axes: ["z"]`; source marked as C6 report, not S3 physical proof |
+| Replacement MPU still | X near 0 g, Y about 0.013 g, Z about 1.086 g; no saturated axis, plausible static gravity reading |
+| Replacement MPU held on edge by user | X about -0.988 g, Y about 0.017 g, Z about 0.133 g; magnitude about 0.997 g, plausible 90° gravity shift |
+| Replacement MPU dashboard | DUT stream detected, `saturated_axes: []`, state `unverified` because S3 P1 has not probed the I²C lines |
 | Host tests after clipped-axis dashboard check | 22 passed |
 
 The resistor divider is nominally 1:2. These values show a working physical
@@ -54,8 +57,9 @@ LED/resistor branch and C6 GPIO20 wire have been removed for this test. The
 servo sketch remains in `dut_examples/servo_demo` and can be reflashed when a
 suitable servo power source is available.
 
-The MPU is wired and responds over I²C, but the Z-axis is saturated and the
-stream is not independently confirmed by the S3. The dashboard server is
+The replacement MPU is wired and responds over I²C with plausible still and
+tilted values. The first module had a saturated Z axis. The stream is not
+independently confirmed by the S3. The dashboard server is
 available via `./scripts/python.sh -m benchos.dashboard` when started; do not
 assume the previous process is still running. `read_imu_stream` returns the
 C6's claim rather than physical proof from P1.

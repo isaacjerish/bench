@@ -44,9 +44,12 @@ If `IMU_ERROR no_device_at_0x68_or_0x69` appears, first check VCC, GND,
 SDA/SCL orientation, NCS, and ADO. I²C also requires pullups to 3.3 V; we
 can add suitable resistors if the breakout does not already provide them.
 
-On the current physical module, `WHO_AM_I=0x70` is consistent with an
-MPU-6500, but the Z register repeatedly returned `0x7FFF` (+2.000 g) even
-after a software reset while X/Y changed. The firmware prints `IMU_RAW`
-and the accelerometer configuration readback to expose this issue. The
-dashboard flags a saturated axis. The fault persisted after a full C6 USB
-power cycle. Do not treat the current three-axis acceleration stream as healthy.
+The **first** physical module returned `WHO_AM_I=0x70`, consistent with an
+MPU-6500, but its Z register repeatedly returned `0x7FFF` (+2.000 g) even
+after a software reset and full USB power cycle. The firmware prints
+`IMU_RAW` and the accelerometer configuration readback to expose such faults;
+the dashboard flags a saturated axis. The user swapped in a second module on
+the same C6 pins. It read about (0, 0.013, 1.086) g while still and
+(-0.988, 0.017, 0.133) g held on edge, a plausible gravity-vector change.
+The dashboard still labels this a DUT stream until S3 physically probes the
+I²C lines.
