@@ -1,0 +1,20 @@
+{
+  "name": "benchy-demo-video",
+  "private": true,
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts BenchyDemo out/benchy-demo.mp4",
+    "still": "remotion still src/index.ts BenchyDemo out/benchy-demo.png"
+  },
+  "dependencies": {
+    "@remotion/transitions": "^4.0.319",
+    "remotion": "^4.0.319",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "typescript": "^5.7.2"
+  }
+}
