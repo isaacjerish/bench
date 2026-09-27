@@ -30,6 +30,7 @@ import segno
 
 SESSION_TTL = timedelta(minutes=10)
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_GEMINI_INLINE_BYTES = 12 * 1024 * 1024
 # A full schema answer runs past 10 kB, and reasoning models spend this budget first.
 MAX_OUTPUT_TOKENS = 8192
 DEFAULT_MODEL = "gemini-robotics-er-2-preview"
@@ -536,6 +537,69 @@ class GeminiRestProvider:
         self.api_key = api_key
         self.model = model
         self._urlopen = urlopen
+
+    def describe_images(self, images: list[tuple[bytes, str]]) -> str:
+        """Turn multiple photos into a neutral visual description for Codex context."""
+        if not self.api_key:
+            raise VisualError("Set GEMINI_API_KEY in .env to use photo context.",
+                              HTTPStatus.SERVICE_UNAVAILABLE)
+        if not self.model:
+            raise VisualError("BENCHY_VISION_MODEL is empty.", HTTPStatus.SERVICE_UNAVAILABLE)
+        if not images or len(images) > 4:
+            raise VisualError("Attach between one and four photos.")
+        if sum(len(image) for image, _mime in images) > MAX_GEMINI_INLINE_BYTES:
+            raise VisualError("The selected photos exceed Gemini's 12 MB combined limit. Use fewer or smaller photos.",
+                              HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        parts = [{"text": (
+            "Describe these photos as one visual-context note for a hardware debugging conversation. "
+            "Inventory visible boards, modules, components, connectors, and physical controls. "
+            "Transcribe legible printed labels and markings. Describe visible wire paths and where they "
+            "appear to meet pins, breadboard rows, or power rails; say when a route or label is uncertain. "
+            "Mention image-to-image differences if the views show different angles or states. Be concise but "
+            "include useful details and spatial relationships. Do not diagnose a fault, propose a fix or test, "
+            "infer voltage/current/continuity/signal behavior, or treat appearance as electrical evidence. "
+            "Output only the descriptive note, with uncertainties clearly marked."
+        )}]
+        for index, (image, mime_type) in enumerate(images, 1):
+            parts.append({"text": f"Photo {index}:"})
+            parts.append({"inlineData": {"mimeType": mime_type,
+                                          "data": base64.b64encode(image).decode("ascii")}})
+        body = {
+            "systemInstruction": {"parts": [{"text": (
+                "You are a visual note-taking stage for an electronics debugging assistant. "
+                "Your only job is to convert visible image content into a careful text description. "
+                "Do not infer electrical or functional correctness, diagnose problems, recommend measurements, "
+                "or make decisions for the debugger. Distinguish clear observations from uncertain visual guesses."
+            )}]},
+            "contents": [{"role": "user", "parts": parts}],
+            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4096},
+        }
+        url = GEMINI_ENDPOINT.format(model=urllib.parse.quote(self.model, safe=""))
+        request = urllib.request.Request(
+            url, data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json", "x-goog-api-key": self.api_key},
+            method="POST")
+        try:
+            with self._urlopen(request, timeout=45) as response:
+                raw = response.read(1_000_000)
+        except urllib.error.HTTPError as exc:
+            self._raise_http(exc)
+        except TimeoutError as exc:
+            raise VisualError("Gemini photo description timed out.", HTTPStatus.GATEWAY_TIMEOUT) from exc
+        except (urllib.error.URLError, OSError) as exc:
+            raise VisualError("Could not reach Gemini to describe the photos.",
+                              HTTPStatus.SERVICE_UNAVAILABLE) from exc
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise VisualError("Gemini returned an unreadable photo description.") from exc
+        return _model_text(payload)
+
+
+def describe_images_for_context(images: list[tuple[bytes, str]]) -> str:
+    provider = GeminiRestProvider(
+        os.environ.get("GEMINI_API_KEY", "").strip(), configured_model_name())
+    return provider.describe_images(images)
 
     def analyze(self, image: bytes, mime_type: str, context: dict) -> dict:
         if not self.api_key:

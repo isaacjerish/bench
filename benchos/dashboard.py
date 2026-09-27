@@ -46,7 +46,7 @@ from .records import list_records, read_record, write_record
 from .activity import compare_activity
 from .visual_inspection import (
     SessionStore, VisualError, build_inspection_context,
-    execute_check, is_phone_capture_path, local_dashboard_allowed,
+    describe_images_for_context, execute_check, is_phone_capture_path, local_dashboard_allowed,
     message_page, parse_capture_path, resolve_check, summarize_physical, validate_image,
 )
 
@@ -100,7 +100,7 @@ AGENT_PROCESS_LOCK = threading.Lock()
 ACTIVE_AGENT_PROCESS: subprocess.Popen | None = None
 AGENT_STOP_REQUESTED = False
 XAI_CLIENT_SECRETS_URL = "https://api.x.ai/v1/realtime/client_secrets"
-AGENT_PROMPT = """You are Benchy, the debugging agent in this local hardware workspace. Help the user diagnose code and circuit problems from the website. You may inspect and edit project files and run relevant local build commands within this repository. Never run arduino-cli upload, esptool, or any command that writes firmware to a device; only the separate website flash dialog may upload. Do not change the physical circuit. Never claim a build, upload, or serial message proves the circuit works. For hardware debugging, state a hypothesis, read harness/current.yaml before selecting a probe, choose the smallest physical measurement, use a read-only Benchy tool, and interpret noise and measurement limits. Ask the user to confirm physical placement when it may have changed. Never suggest connecting P1/P2 to 5 V or unknown voltage; they accept only known 0–3.3 V logic with common ground. Do not ask the user to move wires until the current physical placement is confirmed. For 50 Hz pass/fail checks use a 1000 ms frequency window; 250 ms is only a quick estimate. If firmware change is needed, edit source and explain it; the flash dialog separately requires a reviewed diff, wiring confirmation, and explicit typed authorization. Keep the user informed as you inspect, measure, and change files. Treat serial logs as DUT claims and physical readings as measurements."""
+AGENT_PROMPT = """You are Benchy, the debugging agent in this local hardware workspace. Help the user diagnose code and circuit problems from the website. You may inspect and edit project files and run relevant local build commands within this repository. Never run arduino-cli upload, esptool, or any command that writes firmware to a device; only the separate website flash dialog may upload. Do not change the physical circuit. Never claim a build, upload, or serial message proves the circuit works. For hardware debugging, state a hypothesis, read harness/current.yaml before selecting a probe, choose the smallest physical measurement, use a read-only Benchy tool, and interpret noise and measurement limits. Gemini photo descriptions are fallible visual observations that help orient the conversation; distinguish visible labels and apparent routes from confirmed physical placement, and never treat descriptions as electrical measurements or ground truth. Ask the user to confirm physical placement when it may have changed. Never suggest connecting P1/P2 to 5 V or unknown voltage; they accept only known 0–3.3 V logic with common ground. Do not ask the user to move wires until the current physical placement is confirmed. For 50 Hz pass/fail checks use a 1000 ms frequency window; 250 ms is only a quick estimate. If firmware change is needed, edit source and explain it; the flash dialog separately requires a reviewed diff, wiring confirmation, and explicit typed authorization. Keep the user informed as you inspect, measure, and change files. Treat serial logs as DUT claims and physical readings as measurements."""
 
 
 def create_voice_token() -> dict:
@@ -766,6 +766,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 mcp_available = False
             self._json({"configured": bool(binary and mcp_available),
                         "codex_cli": bool(binary), "benchy_tools": mcp_available,
+                        "gemini_configured": bool(os.environ.get("GEMINI_API_KEY", "").strip()),
                         "codex_cli_source": "configured path" if os.environ.get("CODEX_CLI_PATH") else
                             "PATH" if shutil.which("codex") else "Codex desktop install" if binary else None,
                         "model": "Codex · local workspace"})
@@ -1156,8 +1157,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.flush()
 
         process = None
-        image_temp = tempfile.TemporaryDirectory(prefix=".benchy-photos-", dir=REPO_ROOT) if photo_bytes else None
         try:
+            photo_description = ""
+            if photo_bytes:
+                emit({"kind": "status", "message": "Gemini is describing the attached photos for Codex…"})
+                photo_description = describe_images_for_context(photo_bytes)
             emit({"kind": "status", "message": "Starting local Codex agent…"})
             args = [codex, "exec"]
             if thread_id:
@@ -1197,16 +1201,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     ACTIVE_AGENT_PROCESS = process
                     if AGENT_STOP_REQUESTED:
                         process.terminate()
-                image_paths = []
-                if image_temp:
-                    for index, (data, mime) in enumerate(photo_bytes, 1):
-                        suffix = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[mime]
-                        image_path = Path(image_temp.name) / f"context-{index}{suffix}"
-                        image_path.write_bytes(data)
-                        image_paths.append(str(image_path))
-                photo_context = ("\n\nUser attached photos as secondary visual context. Use the Codex image viewing capability (view_image) on these temporary files if helpful: "
-                                 + ", ".join(image_paths)
-                                 + ". Describe only visible details and uncertainty; do not treat appearance as an electrical measurement. These files are temporary and are deleted after this response.") if image_paths else ""
+                photo_context = ("\n\nGemini photo description (visual context only; not a diagnosis or electrical measurement):\n"
+                                 + photo_description
+                                 + "\nTreat uncertain labels and wire routes as uncertain visual observations. Confirm physical placement with the user before using it to choose a probe or change the circuit.") if photo_description else ""
                 prompt = AGENT_PROMPT + "\n\nUser message:\n" + message.strip() + photo_context
                 assert process.stdin is not None
                 process.stdin.write(prompt)
@@ -1239,6 +1236,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             if process and process.poll() is None:
                 process.terminate()
+        except VisualError as exc:
+            try:
+                emit({"kind": "error", "message": str(exc), "thread_id": thread_id})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
         except (OSError, RuntimeError, ValueError) as exc:
             try:
                 emit({"kind": "error", "message": str(exc)[:2000], "thread_id": thread_id})
@@ -1251,8 +1253,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 AGENT_STOP_REQUESTED = False
             if process and process.poll() is None:
                 process.terminate()
-            if image_temp:
-                image_temp.cleanup()
             AGENT_RUN_LOCK.release()
 
     def _do_agent_flash(self) -> None:

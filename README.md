@@ -283,14 +283,16 @@ to the live conversation or directly to the debugging agent when voice is off.
 The voice session stops when you end it or reload the page.
 
 Add up to four photos with **Add photos / use camera**, or scan the temporary
-phone capture link. Photos are attached to the same Codex investigation as
-secondary visual context; the website does not run a separate photo diagnosis.
-Codex may describe visible details and uncertainty, but appearance is never
-treated as voltage, continuity, or other electrical proof. Photo files are
-resized in the browser, sent to the signed-in Codex service with the question,
-held temporarily inside the project workspace for that investigation, and
-removed after the response. If Grok voice is active, it speaks Codex's findings
-back into the same conversation.
+phone capture link. Set `GEMINI_API_KEY` in the local `.env` file (copy the
+blank entry from `.env.example`; create a key in [Google AI Studio](https://aistudio.google.com/app/apikey)). Gemini turns
+the photos into a text description of visible components, legible labels, and
+apparent wire routes, including uncertainty. That description is sent with the
+debugging request to the signed-in Codex service as context. Gemini does not
+make a separate fault diagnosis or recommend electrical tests. Neither photos
+nor descriptions prove voltage, continuity, or signal behavior. Photo bytes are
+held in memory for the request; only the generated description reaches Codex.
+If Grok voice is active, it speaks Codex's findings back into the same
+conversation.
 
 `./scripts/python.sh -m benchos.cli flash-plan` resolves the declared DUT
 sketch and unique USB device without uploading anything. `build-dut` compiles

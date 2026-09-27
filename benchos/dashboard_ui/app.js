@@ -664,7 +664,8 @@ async function loadAgentStatus() {
   try {
     const response = await fetch('/api/agent/status', {cache:'no-store'}), data = await response.json();
     agentConfigured = Boolean(data.configured); el('agent-send').disabled = !agentConfigured; el('agent-flash-open').disabled = false;
-    if (data.configured) setAgentStatus('Ready · code and read-only hardware checks available.');
+    if (data.configured && data.gemini_configured) setAgentStatus('Ready · code, hardware checks, and Gemini photo context available.');
+    else if (data.configured) setAgentStatus('Ready · code and hardware checks available. Add GEMINI_API_KEY in .env to enable photo context.');
     else if (!data.codex_cli) setAgentStatus('Codex CLI is unavailable to the dashboard. Restart the dashboard from a signed-in Codex environment.');
     else setAgentStatus('Benchy tools are unavailable. Install the project MCP extra in this Python environment.');
   } catch { setAgentStatus('Could not check the local Codex runtime.'); }
@@ -799,7 +800,7 @@ function renderAgentPhotos() {
     remove.addEventListener('click', () => { URL.revokeObjectURL(photo.url); agentPhotos.splice(index, 1); renderAgentPhotos(); });
     figure.append(image, remove); root.append(figure);
   });
-  setText('agent-image-status', agentPhotos.length ? `${agentPhotos.length} photo${agentPhotos.length === 1 ? '' : 's'} attached as visual context · maximum 4` : 'Photos are visual context only; Benchy verifies electrical behavior with probes.');
+  setText('agent-image-status', agentPhotos.length ? `${agentPhotos.length} photo${agentPhotos.length === 1 ? '' : 's'} queued for Gemini description · maximum 4` : 'Gemini turns photos into text context; electrical facts still come from probes.');
   el('agent-image-input').disabled = agentPhotos.length >= 4;
 }
 function clearAgentPhotos() {
@@ -1018,7 +1019,7 @@ function handleVoiceEvent(event, generation) {
   if (event.type === 'session.created') {
     const snapshot = voiceContext();
     const instructions = (voice.instructions || 'You are Benchy, the natural Grok voice agent. Be concise and supportive. For diagnosis or measurements, call ask_codex; never invent readings or infer electrical facts from a photo.') +
-      ' Send the user symptom and relevant conversation history to Codex. Include current dashboard evidence and available visual inspection findings as context. Photos are secondary visual context only; do not run a separate photo diagnosis or state that appearance proves electrical behavior. P1, P2, and P3 are safe only for known 0–3.3 V signals with common ground. If physical placement may have changed, ask the user to confirm it. If Preview is on, readings are synthetic. Current dashboard snapshot (source labels are authoritative): ' + JSON.stringify(snapshot);
+      ' Send the user symptom and relevant conversation history to Codex. Include current dashboard evidence; Gemini turns attached photos into a text description that Codex receives as fallible visual context. Do not treat the description or image as electrical proof. P1, P2, and P3 are safe only for known 0–3.3 V signals with common ground. If physical placement may have changed, ask the user to confirm it. If Preview is on, readings are synthetic. Current dashboard snapshot (source labels are authoritative): ' + JSON.stringify(snapshot);
     voice.tools.forEach(tool => { if (tool.name === 'build_and_flash_dut' || tool.name === 'flash_dut') throw Error('Write tools are blocked in voice mode'); });
     sendVoiceEvent({type:'session.update', session:{
       modalities:['text','audio'], voice:'eve', instructions,
@@ -1051,7 +1052,9 @@ function handleVoiceEvent(event, generation) {
     voice.responseActive = true;
     updateVoiceInterrupt();
   } else if (event.type === 'input_audio_buffer.speech_started') {
-    if (voice.responseActive) sendVoiceEvent({type:'response.cancel'});
+    // Server VAD already interrupts an in-progress response. Sending a second
+    // response.cancel here can race with response.done and make xAI report
+    // "no active response found".
     voice.responseActive = false;
     finishVoiceDraft('assistant');
     stopVoicePlayback(); voiceState('listening', 'Listening…');
@@ -1073,7 +1076,17 @@ function handleVoiceEvent(event, generation) {
       }, waitMs + 40);
     } else voiceState('listening', 'Listening · speak naturally; click to stop.');
   } else if (event.type === 'error') {
-    closeVoice('Voice error · ' + (event.error?.message || 'check the xAI connection and retry.'));
+    const errorMessage = String(event.error?.message || 'check the xAI connection and retry.');
+    // The response can finish between showing the interrupt button and the
+    // cancel reaching the server. That is an expected race; preserve the
+    // conversation and let the user continue.
+    if (/no active response found/i.test(errorMessage)) {
+      voice.responseActive = false;
+      updateVoiceInterrupt();
+      voiceState('listening', 'Listening · speak naturally; click to stop.');
+      return;
+    }
+    closeVoice('Voice error · ' + errorMessage);
   }
 }
 async function startVoice() {
@@ -1418,7 +1431,7 @@ function renderVisual(view) {
     : 'Scan with your phone, then photograph the device under test.';
   else if (view.status === 'uploaded') message.textContent = 'Image received. Analysis will begin automatically.';
   else if (view.status === 'analyzing') message.textContent = 'Analyzing hardware from the photo and the declared harness.';
-  else if (view.status === 'complete') message.textContent = `${view.photo_count || 1} photo${view.photo_count === 1 ? '' : 's'} ready as secondary context. Ask Benchy a question to include them with the debugging conversation; no standalone photo diagnosis is run.`;
+  else if (view.status === 'complete') message.textContent = `${view.photo_count || 1} photo${view.photo_count === 1 ? '' : 's'} ready. Ask Benchy a question; Gemini will describe them and pass the text into Codex's debugging context.`;
   else message.textContent = 'Photo context is ready.';
   showQr(view.qr_svg);
   el('visual-scan').hidden = !view.qr_svg;

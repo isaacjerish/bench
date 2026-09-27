@@ -5,7 +5,7 @@
 <main class="capture-card">
   <p class="capture-kicker">BENCHY</p>
   <h1>Add context photos</h1>
-  <p id="capture-lead">Add up to four views of the device. Benchy uses them in your debugging conversation; photos are not electrical proof.</p>
+  <p id="capture-lead">Add up to four views. Gemini turns visible details into text for Codex; neither the photo nor its description is electrical proof.</p>
   <div id="capture-pick" class="capture-actions">
     <label class="primary-button">Take Photo<input id="take-photo" class="capture-file" type="file" accept="image/*" capture="environment" multiple></label>
     <label class="small-button">Choose Existing Photos<input id="choose-photo" class="capture-file" type="file" accept="image/*" multiple></label>
@@ -87,7 +87,7 @@ async function upload() {
       if (!response.ok) throw Error(data.error || 'Upload failed.');
     }
     review.hidden = true;
-    showStatus('Photos added as context. No separate photo analysis is run.');
+    showStatus('Photos added. Gemini will describe them for the Codex debugging context.');
     poll();
   } catch (error) {
     document.getElementById('capture-upload').disabled = false;
@@ -109,7 +109,7 @@ async function poll() {
     if (data.status === 'uploaded') showStatus('Photo received as context.');
     else if (data.status === 'analyzing') showStatus('Photo received as context.');
     else if (data.status === 'complete') {
-      showStatus('Photo context is ready. Add more photos here, then ask Benchy a debugging question.');
+      showStatus(`Photo context is ready (${data.photo_count || 1}/4). Add more photos here, then ask Benchy a debugging question.`);
       review.hidden = true; pick.hidden = false;
       document.getElementById('capture-upload').disabled = false;
       polling = false;
