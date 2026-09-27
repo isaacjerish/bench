@@ -7,9 +7,8 @@ token-limited route and is reachable only when a public base URL is configured.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import base64
-import urllib.error
-import urllib.request
 import hashlib
 import json
 import math
@@ -103,31 +102,6 @@ XAI_CLIENT_SECRETS_URL = "https://api.x.ai/v1/realtime/client_secrets"
 AGENT_PROMPT = """You are Benchy, the debugging agent in this local hardware workspace. Help the user diagnose code and circuit problems from the website. You may inspect and edit project files and run relevant local build commands within this repository. Never run arduino-cli upload, esptool, or any command that writes firmware to a device; only the separate website flash dialog may upload. Do not change the physical circuit. Never claim a build, upload, or serial message proves the circuit works. For hardware debugging, state a hypothesis, read harness/current.yaml before selecting a probe, choose the smallest physical measurement, use a read-only Benchy tool, and interpret noise and measurement limits. Gemini photo descriptions are fallible visual observations that help orient the conversation; distinguish visible labels and apparent routes from confirmed physical placement, and never treat descriptions as electrical measurements or ground truth. Ask the user to confirm physical placement when it may have changed. Never suggest connecting P1/P2 to 5 V or unknown voltage; they accept only known 0–3.3 V logic with common ground. Do not ask the user to move wires until the current physical placement is confirmed. For 50 Hz pass/fail checks use a 1000 ms frequency window; 250 ms is only a quick estimate. If firmware change is needed, edit source and explain it; the flash dialog separately requires a reviewed diff, wiring confirmation, and explicit typed authorization. Keep the user informed as you inspect, measure, and change files. Treat serial logs as DUT claims and physical readings as measurements."""
 
 
-def create_voice_token() -> dict:
-    """Mint a short-lived xAI token without exposing the API key to the browser."""
-    api_key = os.environ.get("XAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("XAI_API_KEY is not set for the dashboard process")
-    request = urllib.request.Request(
-        XAI_CLIENT_SECRETS_URL,
-        data=json.dumps({"expires_after": {"seconds": 300}}).encode("utf-8"),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            data = json.loads(response.read(16_384))
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"xAI could not create a voice session (HTTP {exc.code})") from None
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-        raise RuntimeError("Could not reach xAI to create a voice session") from None
-    value = data.get("value") if isinstance(data, dict) else None
-    expires_at = data.get("expires_at") if isinstance(data, dict) else None
-    if not isinstance(value, str) or not value or not isinstance(expires_at, int):
-        raise RuntimeError("xAI returned an invalid voice session token response")
-    return {"value": value, "expires_at": expires_at}
-
-
 def find_codex_cli() -> str | None:
     """Find Codex even when the dashboard was started outside the app PATH."""
     override = os.environ.get("CODEX_CLI_PATH")
@@ -136,6 +110,11 @@ def find_codex_cli() -> str | None:
     on_path = shutil.which("codex")
     if on_path:
         return on_path
+    if sys.platform == "darwin":
+        for app in ("Codex", "ChatGPT"):
+            candidate = Path("/Applications") / f"{app}.app/Contents/Resources/codex"
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
     if os.name == "nt":
         local_app_data = os.environ.get("LOCALAPPDATA")
         if local_app_data:
@@ -147,6 +126,20 @@ def find_codex_cli() -> str | None:
             except OSError:
                 pass
     return None
+
+
+def agent_mcp_config() -> tuple[str, ...]:
+    # Resolving a venv's Python symlink selects the base interpreter and loses
+    # its installed MCP dependencies. Preserve the launcher's path exactly.
+    python_path = Path(sys.executable).absolute().as_posix()
+    return (
+        f"mcp_servers.benchy.command={json.dumps(python_path)}",
+        'mcp_servers.benchy.args=["-m","mcp_server.agent_readonly"]',
+        f"mcp_servers.benchy.env.PYTHONPATH={json.dumps(REPO_ROOT.as_posix())}",
+        'mcp_servers.benchy.enabled=true',
+        # Only the explicitly read-only surface is exposed. Writes still prompt.
+        'mcp_servers.benchy.default_tools_approval_mode="writes"',
+    )
 
 
 def viewable_source_files() -> tuple[str, ...]:
@@ -780,7 +773,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     cwd=REPO_ROOT, capture_output=True, text=True, encoding="utf-8",
                     errors="replace", timeout=5, check=True)
                 parts = [result.stdout]
-                additions = subprocess.run(["git", "ls-files", "--others", "--exclude-standard"],
+                additions = subprocess.run(["git", "ls-files", "--others", "--exclude-standard", "--exclude=**/node_modules/**"],
                     cwd=REPO_ROOT, capture_output=True, text=True, encoding="utf-8",
                     errors="replace", timeout=5, check=True)
                 reviewable = {".py", ".ino", ".h", ".cpp", ".c", ".js", ".ts", ".json",
@@ -1127,7 +1120,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         codex = find_codex_cli()
         if not codex:
-            self._json({"error": "Codex CLI was not found. Start the dashboard from the signed-in Codex app, or set CODEX_CLI_PATH to the full path of codex.exe and restart it."},
+            self._json({"error": "Codex CLI was not found. Start the dashboard from the signed-in Codex app, or set CODEX_CLI_PATH to the full path of the Codex executable and restart it."},
                        HTTPStatus.SERVICE_UNAVAILABLE)
             return
         try:
@@ -1172,14 +1165,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             else:
                 args += ["--json", "--cd", str(REPO_ROOT), "--sandbox", "workspace-write",
                          "--ignore-user-config"]
-            python_path = Path(sys.executable).resolve().as_posix().replace('"', '\\"')
-            repo_path = REPO_ROOT.as_posix().replace('"', '\\"')
-            mcp_config = (
-                f'mcp_servers.benchy.command="{python_path}"',
-                'mcp_servers.benchy.args=["-m","mcp_server.agent_readonly"]',
-                f'mcp_servers.benchy.env.PYTHONPATH="{repo_path}"',
-                'mcp_servers.benchy.enabled=true',
-            )
+            mcp_config = agent_mcp_config()
             for item in mcp_config:
                 args += ["--config", item]
             if thread_id:

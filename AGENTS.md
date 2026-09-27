@@ -13,13 +13,13 @@ When debugging hardware:
 6. Reflash only when necessary, then remeasure.
 7. Run the physical check and report the measured values.
 
-Never turn a measurement probe into an output. P1 and P2 accept only known
-0–3.3 V logic with common ground. Do not connect 5 V or unknown voltages to
-either branch. The two 10 kΩ divider resistors load the measured net, so do
-not assume they are safe to attach to a weakly pulled I²C line. Read the
-declared `harness/current.yaml` before selecting a probe, and confirm physical
-placement with the user when it could have changed. The servo uses a separate
-5 V supply and common ground.
+Never turn a measurement probe into an output. P1/P2/P3 and the digital taps
+accept only known 0–3.3 V signals with common ground. Do not connect 5 V or
+unknown voltages. Read `harness/current.yaml` before selecting a probe and
+confirm physical placement when it may have changed. The current
+`series-taps-v1` harness uses one 6.8 kΩ series resistor per signal, shared by
+an ADC and digital input; it has no divider resistor to ground. Older divider
+and servo arrangements in historical notes are not the current circuit.
 Avoid repeatedly flashing a board when one measurement could test the current
 hypothesis. Prefer deterministic physical tests over visual guesses. A 250 ms
 frequency window is only a quick estimate at 50 Hz; use 1000 ms for pass/fail.

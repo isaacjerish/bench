@@ -342,7 +342,7 @@ def test_phone_upload_reaches_the_desktop_without_opening_probes(monkeypatch, tm
     try:
         with urlopen(base + "/") as response:
             page = response.read()
-            assert b"VISUAL INSPECTION" in page
+            assert b"PHOTO CONTEXT" in page
             assert b"visual-start" in page
         with pytest.raises(HTTPError) as blocked:
             urlopen(Request(base + "/api/visual/session", data=b"{}",
@@ -384,10 +384,11 @@ def test_phone_upload_reaches_the_desktop_without_opening_probes(monkeypatch, tm
             time.sleep(0.05)
         assert view["status"] == "complete"
         assert b"BENCHY-JPEG-MARKER" not in json.dumps(view).encode()
-        assert seen["mime"] == "image/jpeg"
-        assert seen["image"].startswith(b"\xff\xd8\xff")
-        assert "usb_serial_number" not in json.dumps(seen["context"])
-        assert view["analysis"]["possible_issues"][0]["electrically_verified"] is False
+        assert seen == {}  # Upload alone never calls a model or opens probes.
+        assert view["analysis"] is None
+        assert view["photo_count"] == 1
+        assert state.visual.images() == [(JPEG, "image/jpeg")]
+        assert view["context"]["electrical_analysis"] is False
         with urlopen(base + "/api/visual/session/image") as response:
             assert response.headers["Content-Type"] == "image/jpeg"
             assert response.read().startswith(b"\xff\xd8\xff")

@@ -5,9 +5,9 @@ seeded and labeled in source; every measurement and repair is real.
 
 ## Before the audience arrives
 
-- Timing fault 3 is currently loaded; its 10 Hz output was measured. The
-  combined wiring swap has **not been confirmed or measured yet**. Each
-  fault and repair has already been rehearsed separately.
+- Latest merged-dashboard preflight: timing fault 3 is loaded and measured
+  at 10 Hz. Light/water reports agree with the probes: **the wiring swap is
+  not currently evidenced**. Each fault and repair was rehearsed separately.
 - For the combined setup: light uncovered, water dry. Unplug both USB cables;
   swap only the C6 IO1/IO2 jumper ends (light to IO2, water S to IO1). Leave
   every colored S3 branch, resistor, and the LED wiring in place. Reconnect.
@@ -44,11 +44,15 @@ Say this after the two-fault setup has actually been confirmed.
 > “This circuit has more than one problem. Before changing anything, compare
 > both sensor voltages with the device reports, measure the alarm frequency,
 > and inspect the pin assignments and timing code. Report each independent
-> issue with its evidence. Then guide the wiring repair, fix and flash the
-> firmware, and remeasure every check.”
+> issue with its evidence. Then guide the wiring repair and prepare the
+> firmware correction for review. I will use Build & flash separately;
+> afterward, remeasure every check.”
 
-Run this in the connected Codex task. The source inspector is read-only;
-the agent performs the code edit, build, and flash through its tools.
+Run this in **Debug with Benchy** on the website. Typed chat is verified with
+real probe calls; voice can hand the investigation to the same Codex agent.
+The source inspector is read-only. Codex prepares edits; review them under
+**Review local code changes**. Upload uses the separate **Build & flash…**
+dialog and the enrolled C6 identity.
 
 ## Repair sequence — the strongest moment
 
@@ -57,8 +61,12 @@ the agent performs the code edit, build, and flash through its tools.
    Show **Assessment + Signal taps** and say:
    > “The sensor readings now agree, but the alarm timing still fails.
    > Fixing one problem hasn't hidden the other.”
-2. **Fix the software.** Agent selects fault 0, builds, and flashes the C6.
-   Refresh **Source** to show the change. During compilation, briefly revisit
+2. **Fix the software.** Ask Benchy to select fault 0 and explain the change.
+   Review the diff and refresh **Source**. Open **Build & flash…**, verify
+   the C6 target and current wiring, check the confirmation, type `FLASH`,
+   and click **Build and upload firmware**. Send its result back to Benchy
+   with the dialog action, then ask for physical verification. During
+   compilation, briefly revisit
    **Investigation** and explain: “The measurements tell us what failed;
    the source helps explain why. The next measurement will test the repair.”
 3. **Verify.** Agent measures the alarm at 2 Hz and checks both sensor reports.
@@ -80,20 +88,21 @@ captures can be phase, not a fault. Use D3 rate and the frequency measurement.
 
 ## Optional Visual / Voice stops and scope
 
-A collaborator has added a **Visual** tab for phone photos. If that feature
-has been configured and preflighted, open **Start visual inspection**, scan
-the temporary QR link on a phone, and photograph the board. Say: “A photo can
-suggest a misplaced connection; a probe measurement tests the electrical
-hypothesis.” Photo analysis uses the configured external vision provider.
-This phone/provider workflow has not been exercised in this session, and the
-currently running page predates the panel. Keep it out of the timed live run
-until verified; do not describe it as an already demonstrated capability.
+The **Visual** section now provides **Start phone photo link**. Scan the
+short-lived QR with a phone on the same Wi-Fi, add a board photo, and ask a
+question in **Debug with Benchy**. Gemini describes visible details for Codex;
+this does not independently prove wiring or electrical behavior. The Gemini
+request has passed with a synthetic image, and the LAN capture route has
+passed from the Mac. Test your actual phone before filming.
 
-The **Talk through the fault** panel is optional and currently disabled on
-this dashboard because its xAI key is not configured. Do not make voice the
-critical path of the demo. Its tools are read-only; Codex handles firmware
-changes. This prototype checks declared 0–3.3 V probe connections; it does
-not automatically trace all wiring or prove that an LED emits light.
+**Start voice conversation** is now configured. The xAI token endpoint was
+verified; microphone permission and audio playback still need a user check.
+Typed chat is the rehearsed path. For voice, ask: “Compare both sensor readings
+with the real probes and check the alarm timing.” Let it finish its Codex
+investigation before asking for a correction.
+
+This prototype checks declared 0–3.3 V probe connections. It does not
+independently trace all wiring or prove that an LED emits light.
 
 The existing captures `02 Inputs swapped` / `03 Inputs repaired` and
 `04 Timing fault` / `05 Timing repaired` document the earlier **separate**

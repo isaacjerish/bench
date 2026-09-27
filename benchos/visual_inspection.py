@@ -595,12 +595,6 @@ class GeminiRestProvider:
             raise VisualError("Gemini returned an unreadable photo description.") from exc
         return _model_text(payload)
 
-
-def describe_images_for_context(images: list[tuple[bytes, str]]) -> str:
-    provider = GeminiRestProvider(
-        os.environ.get("GEMINI_API_KEY", "").strip(), configured_model_name())
-    return provider.describe_images(images)
-
     def analyze(self, image: bytes, mime_type: str, context: dict) -> dict:
         if not self.api_key:
             raise VisualError("GEMINI_API_KEY is not set for the dashboard process.",
@@ -657,6 +651,12 @@ def describe_images_for_context(images: list[tuple[bytes, str]]) -> str:
             raise VisualError("Vision model quota or rate limit was reached. Try again shortly.",
                               HTTPStatus.SERVICE_UNAVAILABLE) from None
         raise VisualError("Visual analysis failed.", HTTPStatus.SERVICE_UNAVAILABLE) from None
+
+
+def describe_images_for_context(images: list[tuple[bytes, str]]) -> str:
+    provider = GeminiRestProvider(
+        os.environ.get("GEMINI_API_KEY", "").strip(), configured_model_name())
+    return provider.describe_images(images)
 
 
 def analyze_dut_image(image: bytes, mime_type: str, context: dict,

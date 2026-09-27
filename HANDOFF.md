@@ -1,6 +1,48 @@
 # Benchy handoff
 
-## Active: combined-fault exercise (2026-09-26 evening)
+## Current: collaborator dashboard merged and verified locally (2026-09-26)
+
+- Fast-forwarded `main` through `6e8b7cd` and `08056c8`; no conflicts.
+  Preserved the new styling, integrated Codex/Grok conversation, Gemini photo
+  context, and separate Build & flash dialog.
+- Fixed the MCP Python launcher losing its virtualenv through symlink
+  resolution, added macOS Codex discovery, and annotated the website's
+  measurement-only MCP tools as read-only. The CLI uses `writes` approval
+  mode for that server; no firmware-write tools are exposed. Workspace
+  sandbox and explicit website flash confirmation remain in place.
+- Repaired misplaced Gemini provider methods/error handling, legacy helper
+  imports, and updated tests for photo-context-only uploads and Grok's new
+  `ask_codex` tool. Excluded untracked node_modules from code review output.
+- **131 Python tests + 9 Node UI tests pass**, JavaScript syntax passes.
+  Actual website chat successfully called the MCP tools and measured:
+  P1 **2.733 V** vs DUT **2.760 V**, P2 **0.000 V** vs DUT **0.004 V**,
+  P3 **10.0 Hz** over **2000 ms** (20 rising edges). Input reports agree;
+  the intentional timing fault remains present. No rewiring or upload was
+  performed during this merge. Do not claim the combined wiring fault is set.
+- Fresh saved capture: **Merged dashboard preflight — timing fault**,
+  `dashboard/f315ae00ef614194b6fafba32cacced6.json`. No capture errors;
+  light **2.719 V**, water **0 V**, D3 **40 transitions / 2 s**, bracketed
+  `alert=1`: timing FAIL as expected. Portable copy:
+  `validation_runs/2026-09-26-merged-dashboard-preflight.json`.
+- Local dashboard restarted at `http://127.0.0.1:8765/#assistant-chat`.
+  Both enrolled boards are connected: S3 `/dev/cu.usbmodem1101`, C6
+  `/dev/cu.usbmodem5`; always rediscover USB identities after reconnection.
+- User-provided credentials are saved ONLY in ignored `.env` (permissions
+  0600). xAI temporary voice-token creation succeeded. Gemini model access
+  and actual description of a synthetic blue image succeeded. No microphone
+  recording or real board photo was sent in these checks.
+- Phone capture now uses this Mac's current Wi-Fi address, discovered with
+  `ipconfig getifaddr en0`, instead of the collaborator's old address. The
+  capture URL was reachable from the Mac over LAN; desktop agent endpoints
+  returned **403** over LAN. Actual phone reachability and microphone/audio
+  playback still need a user check. Wi-Fi client isolation may affect phones.
+- The flash dialog correctly identifies enrolled C6 and sketch `parcel_guard`.
+  Upload was not repeated: source and flashed C6 intentionally remain fault 3.
+  `LIVE_DEMO_SCRIPT.md` now uses website chat → reviewed diff → Build & flash
+  → physical remeasurement. Previous captures are recorded fallback evidence.
+- Untracked `video/node_modules/` was left untouched and must not be committed.
+
+## Previous: combined-fault exercise (2026-09-26 evening)
 
 User requests two errors present together and now wants a concise live pitch
 touching all UI sections. `LIVE_DEMO_SCRIPT.md` is the current filming script:

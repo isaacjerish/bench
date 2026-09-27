@@ -1,6 +1,7 @@
 """Read-only Benchy MCP surface for the website's Codex agent."""
 
 from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
 
 from mcp_server import server as full_server
 
@@ -20,7 +21,9 @@ READ_ONLY_TOOLS = (
 )
 
 for tool_name in READ_ONLY_TOOLS:
-    mcp.tool(structured_output=True)(getattr(full_server, tool_name))
+    mcp.tool(structured_output=True, annotations=ToolAnnotations(
+        read_only_hint=True, destructive_hint=False, open_world_hint=False,
+    ))(getattr(full_server, tool_name))
 
 
 if __name__ == "__main__":

@@ -76,7 +76,7 @@ def test_voice_endpoints_require_local_origin_and_block_write_calls(monkeypatch)
             assert json.load(response)["configured"] is False
         with urlopen(base + "/api/voice/tools") as response:
             exposed = {tool["name"] for tool in json.load(response)["tools"]}
-            assert "describe_harness" in exposed
+            assert exposed == {"ask_codex"}
             assert "build_and_flash_dut" not in exposed
         body = json.dumps({"name": "build_and_flash_dut", "arguments": {}}).encode()
         request = Request(base + "/api/voice/tool", data=body,
@@ -91,7 +91,7 @@ def test_voice_endpoints_require_local_origin_and_block_write_calls(monkeypatch)
         with pytest.raises(HTTPError) as blocked:
             urlopen(request)
         assert blocked.value.code == 403
-        assert json.load(blocked.value)["error"] == "Tool is not enabled in voice mode"
+        assert json.load(blocked.value)["error"] == "Local dashboard request required"
         request = Request(base + "/api/voice/session", data=b"{}",
                           headers={"Content-Type": "application/json", "X-Benchy-Local": "1",
                                    "Origin": base}, method="POST")
