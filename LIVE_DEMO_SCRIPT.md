@@ -78,7 +78,16 @@ captures can be phase, not a fault. Use D3 rate and the frequency measurement.
 > “One wiring mistake, one firmware bug, and measured proof of both repairs.
 > Benchy connects the agent's code understanding to the signals on the bench.”
 
-## Voice and scope
+## Optional Visual / Voice stops and scope
+
+A collaborator has added a **Visual** tab for phone photos. If that feature
+has been configured and preflighted, open **Start visual inspection**, scan
+the temporary QR link on a phone, and photograph the board. Say: “A photo can
+suggest a misplaced connection; a probe measurement tests the electrical
+hypothesis.” Photo analysis uses the configured external vision provider.
+This phone/provider workflow has not been exercised in this session, and the
+currently running page predates the panel. Keep it out of the timed live run
+until verified; do not describe it as an already demonstrated capability.
 
 The **Talk through the fault** panel is optional and currently disabled on
 this dashboard because its xAI key is not configured. Do not make voice the

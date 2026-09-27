@@ -16,6 +16,15 @@ explicit fault-3 demo configuration is being committed for this filming setup;
 restore it to 0 and reflash after the exercise. The source inspector shows
 local files and does not independently identify the flashed binary.
 
+Preserved collaborator commit `d9f0430` (phone visual inspection) while rebasing
+the pitch/comments. The live script includes this as an optional, unverified
+stop; no photo, camera session, provider call, or LAN exposure was started.
+The running dashboard/page predates that addition. Installed its required
+`segno==1.6.6` in the existing Benchy virtualenv via uv (this env has no pip
+module). Merged regression check: **127 Python tests + 9 Node UI tests pass**,
+and JavaScript syntax checks pass. Source annotations were checked in the
+existing live inspector. Phone/provider transport remains unverified.
+
 Loaded intentional fault 3 onto the enrolled C6; compile, upload verification,
 and postflash telemetry check passed. S3 independently measured **10.000 Hz**
 (20 rising edges / 2001 ms) before the wiring change. Local
