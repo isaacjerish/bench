@@ -78,8 +78,14 @@ No wire moves. Leave the light uncovered so the alarm stays requested.
 After the color rewire, the live dashboard and a saved capture agree: light
 **2.697 V**, dry-water baseline **0 V**, D3 **8 transitions/2 seconds**,
 stable DUT `alert=1`, conditional output check **pass**. This validates the
-new live conditional-check path. Covered/wet stimulus checks after this rewire
-and the two full fault/repair sequences remain pending.
+new live conditional-check path. The held-covered/dry follow-up measured light
+**0.481 V**, water **0 V**, alarm **0 V / zero transitions**, with `alert=0`
+and a passing conditional check; user confirms the LED stopped. Covered/wet
+measured light **0.395 V**, water **0.834 V**, and **8 alarm transitions/2001 ms**;
+the DUT reported `lid_open=0 wet=1 alert=1` and the conditional check passed.
+The colored probe wiring responds correctly to both sensor stimuli. The UI's
+saved comparison was verified with these real dry/wet captures. The two full
+fault/repair sequences remain pending.
 
 Color reminder: **yellow S3 IO1+IO8 = light**, **blue IO4+IO9 = water**,
 **orange IO6+IO10 = alarm drive**, **black GND = common ground**. Each signal

@@ -22,9 +22,21 @@
   Its label/note record the requested/reported condition, not a verified dark
   condition. Asked user to hold an opaque cover in place for a repeat. Do not
   treat this as a covered-state pass or assume a wiring failure yet.
-- Still need post-color steady covered/wet tests and both complete fault →
-  repair sequences. Dashboard real-data mode remains on; no synthetic reading
-  or firmware upload was used for this baseline.
+- **Follow-up stimulus checks pass.** Held covered/dry: P1 0.481 V, P2/P3 0 V,
+  zero D3 transitions / 2 seconds, bracketed `alert=0`, activity pass. User
+  confirms visible LED stopped. Covered/wet: P1 0.395 V, P2 0.834 V, D3 8 edges
+  / 2001 ms, `lid_open=0 wet=1 alert=1`, activity pass. Water voltage is below
+  a digital HIGH threshold, so D2 LOW in the wet capture is expected; do not
+  equate that digital level with “dry.” Evidence in
+  `2026-09-26-color-rewire-covered-{dry,wet}.json` under `validation_runs/`.
+- UI saved comparison verified with the real dry/wet captures: P2 +0.834 V,
+  D3 0 → 3.998 transitions/s. Both complete fault → repair sequences remain
+  pending. User has been asked to dry/uncover, power both boards off, swap
+  only C6 IO1/IO2 jumper ends, and reconnect (all S3 branches stay put).
+- Preserved remote `f4708f8` voice wording update via rebase; guide/baseline
+  pushed as `acae3b3`. Voice targeted tests: 6 pass, 1 socket-dependent test
+  skipped under sandbox. Running dashboard still predates that wording change;
+  it does not affect the current real-data measurement rehearsal.
 
 ## Latest: dashboard readiness pass (2026-09-26)
 
