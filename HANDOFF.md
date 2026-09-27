@@ -2,7 +2,20 @@
 
 ## Active: combined-fault exercise (2026-09-26 evening)
 
-User now requests two errors present together, without a UI walkthrough.
+User requests two errors present together and now wants a concise live pitch
+touching all UI sections. `LIVE_DEMO_SCRIPT.md` is the current filming script:
+collect both failures first, repair wiring, demonstrate the remaining timing
+failure, repair/flash software, then compare all measured evidence.
+
+At user's request, `config.h` labels the intended wiring assignments and the
+separate `SOFTWARE BUG DEMO`; the sketch explains 50 ms -> 10 Hz versus
+250 ms -> 2 Hz at the timing line. These annotations were verified in the
+dashboard source inspector. This edit changes comments only relative to the
+already loaded fault-3 source, so no additional flash was performed. The
+explicit fault-3 demo configuration is being committed for this filming setup;
+restore it to 0 and reflash after the exercise. The source inspector shows
+local files and does not independently identify the flashed binary.
+
 Loaded intentional fault 3 onto the enrolled C6; compile, upload verification,
 and postflash telemetry check passed. S3 independently measured **10.000 Hz**
 (20 rising edges / 2001 ms) before the wiring change. Local

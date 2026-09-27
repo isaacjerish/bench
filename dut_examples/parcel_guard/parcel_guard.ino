@@ -70,6 +70,10 @@ void loop() {
     else if (waterMv <= WATER_DRY_MV) wet = false;
     alert = lidOpen || wet;
   }
+  // SOFTWARE BUG DEMO: fault 3 uses 50 ms per half-cycle -> 10 Hz (wrong).
+  // Intended behavior: 250 ms per half-cycle -> 2 Hz.
+  // Repair: select fault 0 in config.h, flash C6, and verify with the S3 probe.
+  // The separate wiring exercise swaps sensor leads; it does not change this timing.
   const uint32_t halfPeriodMs = DEMO_FAULT == 3 ? 50 : 250;
   const bool startupCheck = now < 1500;
   const bool shouldBlink = startupCheck || alert;

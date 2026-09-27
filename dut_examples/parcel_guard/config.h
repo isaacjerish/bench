@@ -1,6 +1,9 @@
 #pragma once
 #include <Arduino.h>
 
+// WIRING EXERCISE: these are the intended pin assignments.
+// Swapping the physical light/water jumpers at C6 IO1/IO2 creates the wiring
+// fault. Repair those jumpers; keep these correct assignments unchanged.
 static constexpr uint8_t LIGHT_GPIO = 1;
 static constexpr uint8_t WATER_GPIO = 2;
 static constexpr uint8_t ALERT_LED_GPIO = 20;
@@ -16,7 +19,10 @@ static constexpr char BUILD_ID[] = "parcel-guard-v1";
 // 1 = water ADC/report forced to zero (leak ignored);
 // 2 = alarm output disabled despite alert; 3 = wrong blink frequency (10 Hz).
 #ifndef PARCEL_GUARD_FAULT
-#define PARCEL_GUARD_FAULT 0
+// SOFTWARE BUG DEMO: 3 selects the intentionally wrong 10 Hz alarm timing.
+// This is separate from the physical sensor-wire swap described above.
+// REPAIR: change 3 to 0, upload to C6, then measure the output at 2 Hz.
+#define PARCEL_GUARD_FAULT 3
 #endif
 static constexpr uint8_t DEMO_FAULT = PARCEL_GUARD_FAULT;
 static_assert(DEMO_FAULT <= 3, "Unknown demonstration fault");

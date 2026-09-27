@@ -1,5 +1,10 @@
 # Benchy: a three-minute debugging demo
 
+For the latest **combined one-wiring-error + one-software-error pitch**, use
+[the live demo script](LIVE_DEMO_SCRIPT.md). This page documents the earlier
+separate fault rehearsals; its healthy end state was later replaced by the
+intentional timing-fault setup for the combined exercise.
+
 Use the real connected boards with **Preview off** and **Live: on**. Expand
 the browser panel for filming so the design map and assessment fit together.
 These are deliberately seeded faults; measurements and repairs are real.
