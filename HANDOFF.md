@@ -1,5 +1,31 @@
 # Benchy handoff
 
+## Active: color rewire and video rehearsal (2026-09-26 evening)
+
+- User wants one or two common/subtle seeded faults and a polished UI
+  walkthrough. `DEMO_VIDEO_WALKTHROUGH.md` selects swapped C6 sensor inputs
+  and the existing 10 Hz timing exercise, followed by real repair/remeasurement.
+  No fault has been introduced in this rehearsal yet; C6 remains fault 0.
+- Color mapping: yellow S3 IO1+IO8 light; blue IO4+IO9 water; orange IO6+IO10
+  alarm drive; black shared GND. Each pair shares one 6.8 kΩ series resistor.
+- Boards rediscovered: S3 serial `94:A9:90:DB:BA:64` currently
+  `/dev/cu.usbmodem1101`; C6 `A0:85:E3:DA:BD:80` currently
+  `/dev/cu.usbmodem5`. Always rediscover identities after reconnecting.
+- **Live conditional output path now verified**: saved baseline light 2.697 V,
+  water 0 V, D3 8 CHANGE edges / 2 seconds; bracketed DUT reports consistently
+  `alert=1`, expected 3–5 transitions/s, activity verdict pass. UI visibly
+  shows “Independent readings agree.” Evidence:
+  `validation_runs/2026-09-26-color-rewire-baseline.json` (runtime capture ID
+  `603da60aa390429e80a94d01be3d6ded`; duplicate aliases collapse in the menu).
+- User reported cover stopped the LED, but the subsequent saved capture
+  (`b6410b5ab3db47b4a6f4c06126d3ab98`) measured 2.707 V light / active alarm.
+  Its label/note record the requested/reported condition, not a verified dark
+  condition. Asked user to hold an opaque cover in place for a repeat. Do not
+  treat this as a covered-state pass or assume a wiring failure yet.
+- Still need post-color steady covered/wet tests and both complete fault →
+  repair sequences. Dashboard real-data mode remains on; no synthetic reading
+  or firmware upload was used for this baseline.
+
 ## Latest: dashboard readiness pass (2026-09-26)
 
 - Completed conditional output checks in `benchos/activity.py`, enabled through

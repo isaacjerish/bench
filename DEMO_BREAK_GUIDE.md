@@ -3,6 +3,9 @@
 For the current light + water + LED circuit. Healthy behavior is tested;
 **rehearse these deliberate wiring faults once before filming.**
 
+For the recommended two-fault video and exact UI sequence, use
+[the video walkthrough](DEMO_VIDEO_WALKTHROUGH.md).
+
 ## Before every change
 
 **Unplug BOTH ESP32 USB cables before breaking or restoring wiring.** Reconnect
