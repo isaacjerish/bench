@@ -1,7 +1,8 @@
 # Benchy demo — what to break
 
-For the current light + water + LED circuit. Healthy behavior is tested;
-**rehearse these deliberate wiring faults once before filming.**
+For the current light + water + LED circuit. Healthy behavior and the swapped
+sensor-input fault/repair were physically rehearsed on 2026-09-26. The two
+other wiring faults below remain optional, unrehearsed exercises.
 
 For the recommended two-fault video and exact UI sequence, use
 [the video walkthrough](DEMO_VIDEO_WALKTHROUGH.md).
@@ -29,6 +30,10 @@ Cover the photoresistor: LED should stop. Uncover it again.
   source inspection helps distinguish them.
 - **Restore:** Photoresistor jumper → **C6 IO1**; water S jumper → **C6 IO2**.
   Remeasure: both sensor reports should agree with Benchy again.
+- **Rehearsal evidence:** swapped: S3 light 2.629 V/water 0 V, DUT light about
+  0.47 V/water 2.64 V. Restored: S3 light 2.731 V/DUT about 2.765 V, water near
+  zero on both. The UI flagged disagreement, then returned to agreement;
+  alarm activity stayed 4 transitions/s throughout.
 
 ## 2. Disconnect the LED's ground — output versus actual load
 

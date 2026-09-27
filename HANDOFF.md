@@ -1,11 +1,12 @@
 # Benchy handoff
 
-## Active: color rewire and video rehearsal (2026-09-26 evening)
+## Latest: color rewire and both demo rehearsals pass (2026-09-26 evening)
 
 - User wants one or two common/subtle seeded faults and a polished UI
   walkthrough. `DEMO_VIDEO_WALKTHROUGH.md` selects swapped C6 sensor inputs
   and the existing 10 Hz timing exercise, followed by real repair/remeasurement.
-  No fault has been introduced in this rehearsal yet; C6 remains fault 0.
+  Both full sequences are now physically rehearsed and restored. C6 is flashed
+  with fault 0; local config is also fault 0. No fault remains active.
 - Color mapping: yellow S3 IO1+IO8 light; blue IO4+IO9 water; orange IO6+IO10
   alarm drive; black shared GND. Each pair shares one 6.8 kΩ series resistor.
 - Boards rediscovered: S3 serial `94:A9:90:DB:BA:64` currently
@@ -30,9 +31,29 @@
   equate that digital level with “dry.” Evidence in
   `2026-09-26-color-rewire-covered-{dry,wet}.json` under `validation_runs/`.
 - UI saved comparison verified with the real dry/wet captures: P2 +0.834 V,
-  D3 0 → 3.998 transitions/s. Both complete fault → repair sequences remain
-  pending. User has been asked to dry/uncover, power both boards off, swap
-  only C6 IO1/IO2 jumper ends, and reconnect (all S3 branches stay put).
+  D3 0 → 3.998 transitions/s.
+- **Wiring fault/repair verified:** user swapped C6 IO1/IO2 input leads with
+  probes unchanged, then restored them. Fault capture S3 light 2.629 V/water
+  0 V versus DUT light ~0.47 V/water ~2.64 V. UI flagged disagreement. Repair
+  S3 light 2.731 V versus DUT ~2.765 V, water near zero on both; UI returns to
+  agreement. Alarm drive stayed 4 transitions/s, showing why LED blinking
+  alone misses this wiring mistake. Captures `02 Inputs swapped` / `03 Inputs
+  repaired`; tracked `validation_runs/2026-09-26-demo-inputs-{swapped,repaired}.json`.
+- **Timing fault/repair verified:** changed config to fault 3, compiled/uploaded
+  to enrolled C6, measured P3 **10.000 Hz** over 2 s. D3 counted **40 CHANGE
+  edges / 2 s**, conditional activity verdict fail; UI visibly said “Measured
+  output does not match.” Restored config to fault 0, compiled/uploaded again,
+  measured **2.000 Hz** (4 rising edges / 2001 ms); D3 **8 CHANGE edges / 2 s**,
+  conditional verdict pass. Both upload/postflash gates passed; output behavior
+  was independently checked afterward. Files: `validation_runs/2026-09-26-demo-
+  timing-*` (captures, frequency readings, and both upload results).
+- Final UI: Preview off, Live on, serial resumed; live assessment visibly
+  “Independent readings agree.” Saved captures show `04 Timing fault` Before,
+  `05 Timing repaired` After, D3 **20/s → 4/s**. Device-output disclosure open.
+  Source inspector and physical-before/after navigation also exercised. A
+  P3 HIGH/LOW voltage snapshot change is waveform phase, not proof of repair;
+  use D3 rate and the separate frequency evidence. User confirmed LED-off in
+  covered condition; no new visible LED confirmation after the final flash.
 - Preserved remote `f4708f8` voice wording update via rebase; guide/baseline
   pushed as `acae3b3`. Voice targeted tests: 6 pass, 1 socket-dependent test
   skipped under sandbox. Running dashboard still predates that wording change;

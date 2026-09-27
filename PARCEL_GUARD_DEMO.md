@@ -3,13 +3,13 @@
 For friends introducing physical wiring faults, use the short
 [what-to-break guide](DEMO_BREAK_GUIDE.md).
 
-Status: matching firmware is uploaded. Initial light readings agree and the
-LED drive passes at 2.000 Hz. Covered/dry reads 0.686 V light and alarm off;
-the user confirms visible on/off response. Dark/wet measures 0.534 V light,
-0.965 V water and 4 alarm transitions/s, with user-confirmed blinking. Healthy
-wiring checks pass; the deliberate fault/repair sequence below still needs
-execution before calling the complete demo validated. Seeded faults are
-intentional exercises, not a claim of discovering an unknown fault unaided.
+Status: healthy color wiring, swapped-input repair, and the 10 Hz → 2 Hz
+firmware repair all passed a live rehearsal on 2026-09-26. The UI displayed
+both failures and the return to passing measurements. C6 is restored to fault
+0. Use [the current video walkthrough](DEMO_VIDEO_WALKTHROUGH.md) for exact UI
+steps, saved capture names, and measured results. Seeded faults are intentional
+exercises, not a claim of discovering an unknown fault unaided. The optional
+water-false-zero exercise below has not been rehearsed on this circuit.
 
 ## Before showing friends
 

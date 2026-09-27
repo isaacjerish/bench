@@ -60,6 +60,10 @@ No wire moves. Leave the light uncovered so the alarm stays requested.
    the agent's separate **2 Hz frequency measurement**. Confirm visible LED
    blinking. Save `05 Timing repaired`; compare captures 04 and 05.
 
+In that comparison, focus on **D3 Transitions: 20/s → 4/s**. P3 voltage is an
+instantaneous sample of a blinking output; a change from HIGH to LOW between
+captures is just a different phase, not evidence the alarm stopped.
+
 ## What makes this convincing
 
 - Film the real board beside the UI; hold each condition steady for 10 seconds.
@@ -84,8 +88,21 @@ and a passing conditional check; user confirms the LED stopped. Covered/wet
 measured light **0.395 V**, water **0.834 V**, and **8 alarm transitions/2001 ms**;
 the DUT reported `lid_open=0 wet=1 alert=1` and the conditional check passed.
 The colored probe wiring responds correctly to both sensor stimuli. The UI's
-saved comparison was verified with these real dry/wet captures. The two full
-fault/repair sequences remain pending.
+saved comparison was verified with these real dry/wet captures.
+
+**Both complete fault/repair sequences passed rehearsal on 2026-09-26:**
+
+| Exercise | Fault evidence | After repair |
+| --- | --- | --- |
+| Swapped C6 inputs | S3 light 2.629 V/water 0 V; C6 light ~0.47 V/water ~2.64 V; UI mismatch | S3 light 2.731 V/C6 ~2.765 V; water near zero on both; UI agreement |
+| Wrong timing | Independent 10.000 Hz measurement; 40 transitions/2 s; UI conditional check fails | Uploaded fault 0; independent 2.000 Hz measurement; 8 transitions/2 s; UI passes |
+
+Saved captures `02 Inputs swapped`, `03 Inputs repaired`, `04 Timing fault`,
+and `05 Timing repaired` are ready to select in the UI. The final circuit is
+restored, with healthy C6 firmware. Evidence and upload results are committed
+under `validation_runs/2026-09-26-demo-*`. The timing exercise uses an explicit
+fault selector, so it demonstrates the measurement/repair workflow rather
+than a blind source-code challenge.
 
 Color reminder: **yellow S3 IO1+IO8 = light**, **blue IO4+IO9 = water**,
 **orange IO6+IO10 = alarm drive**, **black GND = common ground**. Each signal

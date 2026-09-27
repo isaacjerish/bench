@@ -1,5 +1,5 @@
 # User-declared wiring; healthy light/water/LED behavior physically checked 2026-09-26.
-# Conditional alert=1 activity check passed live after color rewire, 2026-09-26.
+# Conditional alert=0/1 and timing-fault checks passed live, 2026-09-26.
 version: 1
 declared_on: '2026-09-26'
 voltage_limit_v: 3.3

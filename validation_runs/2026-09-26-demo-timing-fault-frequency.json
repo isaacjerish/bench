@@ -1,0 +1,8 @@
+{
+  "kind": "frequency",
+  "probe": "P3",
+  "frequency_hz": 10.0,
+  "edges": 20,
+  "window_ms": 2000,
+  "pulse_us": 0
+}
