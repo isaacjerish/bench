@@ -71,22 +71,36 @@ VOICE_TOOL_ALLOWLIST = frozenset({
     "compare_light_sensor", "check_circuit", "read_imu_stream",
 })
 VOICE_INSTRUCTIONS = (
-    "You are Benchy, a warm, natural, concise hardware debugging partner. "
+    "You are Grok, Benchy's warm, natural, concise hardware debugging partner. "
     "Speak like a helpful person beside the user at the bench: respond to what "
     "they just said, use contractions, vary your phrasing, and keep most turns "
     "to one or two short sentences. Ask one focused question at a time. Do not "
-    "announce tool calls or narrate your analysis. Start by understanding the "
+    "announce tool calls or narrate your analysis. Stay in first person: say "
+    "'I'll check that' or 'I'll prepare the change'. Do not narrate routing, "
+    "handoffs, backend names, or tool names; do not say you are asking Codex "
+    "or waiting for Codex. Refer to yourself as Grok if a name is needed. "
+    "Start by understanding the "
     "reported symptom and inspect the declared harness before choosing a probe. "
     "Treat declarations and DUT serial output as claims, not physical proof. "
     "When asked to check, test, measure, diagnose, inspect code, or fix a problem, "
-    "you MUST call ask_codex with the user request and useful context. Do not "
+    "you MUST call work_on_project with the user request and useful context. "
+    "That tool can read AND EDIT local source files, prepare firmware fixes, "
+    "run builds, and take read-only physical measurements. The probes being "
+    "read-only does NOT prevent source edits. When the user asks you to fix "
+    "firmware, use the tool to make the requested source change; do not refuse "
+    "as read-only or merely offer a line for the user to edit. If the cause is "
+    "already established, carry that evidence into the edit request. The tool "
+    "cannot upload firmware. After a successful edit, explain what changed "
+    "and direct the user to review the diff and use Build & flash. Do not "
     "answer a fresh-measurement request solely from the dashboard snapshot; "
-    "it is background context, not a new tool result. Wait for Codex before "
-    "reporting what the test found. Use read-only Benchy tools through Codex "
+    "it is background context, not a new tool result. Wait for the tool result "
+    "before claiming a measurement or edit succeeded. Use work_on_project "
     "to gather the smallest useful measurement, "
     "explain what it shows and what remains uncertain, then suggest one next "
     "check. Frequency is full cycles per second; digital tap transitions count "
     "both edges, so a clean 10 Hz square wave has 20 transitions per second. "
+    "A rate multiplier is measured frequency divided by expected frequency; "
+    "calculate it before saying how many times faster a signal is. "
     "Never read raw variable names, JSON keys, snake_case labels, pin "
     "IDs, or code identifiers aloud. Translate labels into ordinary words from "
     "the harness: say ‘the light sensor reading’ instead of ‘LIGHT_SENSE_3’; "
@@ -98,8 +112,10 @@ VOICE_INSTRUCTIONS = (
     "ask what it connects to. P1, P2, and P3 accept only known 0–3.3 V signals "
     "with common ground; never suggest connecting them to 5 V or an unknown "
     "voltage. Ask the user to confirm physical placement if wiring may have "
-    "changed. Do not claim to see or change the circuit. Do not request "
-    "firmware flashing; voice tools are read-only. Audio and this conversation "
+    "changed. Only the user moves physical wires. Source edits do not change "
+    "the running firmware until the user approves the separate Build & flash "
+    "action. Never upload through a voice tool or claim a source edit has "
+    "repaired the running circuit. Audio and this conversation "
     "are being sent to xAI for inference."
 )
 AGENT_RUN_LOCK = threading.Lock()
@@ -148,6 +164,23 @@ def agent_mcp_config() -> tuple[str, ...]:
         # Only the explicitly read-only surface is exposed. Writes still prompt.
         'mcp_servers.benchy.default_tools_approval_mode="writes"',
     )
+
+
+def agent_command(codex: str, thread_id: str | None = None) -> list[str]:
+    args = [codex, "exec"]
+    if thread_id:
+        # Resume accepts config overrides but not --sandbox. Without this
+        # override it can fall back to read-only despite a writable first turn.
+        args += ["resume", "--json", "--ignore-user-config"]
+    else:
+        args += ["--json", "--cd", str(REPO_ROOT), "--sandbox", "workspace-write",
+                 "--ignore-user-config"]
+    args += ["--config", 'sandbox_mode="workspace-write"']
+    for item in agent_mcp_config():
+        args += ["--config", item]
+    if thread_id:
+        args.append(thread_id)
+    return args + ["-"]
 
 
 def safe_agent_diagnostic(message: str) -> str:
@@ -774,13 +807,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         if route.path == "/api/voice/tools":
             self._json({"tools": [{
-                "type": "function", "name": "ask_codex",
-                "description": "Hand the user's debugging problem to the local Codex engineer. Use this when code inspection, a physical measurement, or a concrete diagnosis is needed. Include what the user observed, relevant conversation context, and what you want Codex to investigate. Codex will inspect the local project and may take read-only physical measurements.",
+                "type": "function", "name": "work_on_project",
+                "description": "Inspect and edit local project source, prepare firmware fixes, run local builds, and take read-only physical measurements. Use this for every requested investigation or code change. When the user asks to fix firmware, request the actual source edit, not just advice. Include established evidence and the requested outcome. It cannot upload firmware or move wires; direct the user to the separate reviewed Build & flash action after an edit. Report actual results in your own voice without announcing an internal handoff.",
                 "parameters": {
                     "type": "object", "properties": {
-                        "problem": {"type": "string", "description": "The user's symptom and expected behavior."},
-                        "context": {"type": "string", "description": "Relevant details established in the conversation, including what has already been tried."},
-                        "investigation": {"type": "string", "description": "The specific question or next investigation for Codex."}
+                        "problem": {"type": "string", "description": "The user's symptom, expected behavior, or requested code change."},
+                        "context": {"type": "string", "description": "Established evidence, relevant conversation details, and what has already been tried."},
+                        "investigation": {"type": "string", "description": "The concrete investigation or source edit to perform. Include explicit code-edit requests when the user asks for a fix. Never request an upload."}
                     }, "required": ["problem", "context", "investigation"], "additionalProperties": False
                 }
             }]})
@@ -1187,24 +1220,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         try:
             photo_description = ""
             if photo_bytes:
-                emit({"kind": "status", "message": "Gemini is describing the attached photos for Codex…"})
+                emit({"kind": "status", "message": "Gemini is describing the attached photos…"})
                 photo_description = describe_images_for_context(photo_bytes)
-            emit({"kind": "status", "message": "Starting local Codex agent…"})
-            args = [codex, "exec"]
-            if thread_id:
-                # `exec resume` accepts JSON/config options before its session id,
-                # but does not support `--cd` or `--sandbox`. Resume restores the
-                # original workspace and policy from the saved session.
-                args += ["resume", "--json", "--ignore-user-config"]
-            else:
-                args += ["--json", "--cd", str(REPO_ROOT), "--sandbox", "workspace-write",
-                         "--ignore-user-config"]
-            mcp_config = agent_mcp_config()
-            for item in mcp_config:
-                args += ["--config", item]
-            if thread_id:
-                args.append(thread_id)
-            args.append("-")
+            emit({"kind": "status", "message": "Opening the project workspace…"})
+            args = agent_command(codex, thread_id)
             environment = os.environ.copy()
             profile = environment.get("USERPROFILE")
             if profile:

@@ -91,7 +91,7 @@ wrong. Explain it simply, and don't change anything yet.
 
 > “We describe the project in normal language and add photos for context.
 > Gemini Robotics ER describes what's visible in those photos. Benchy's
-> probes supply the electrical measurements, and Codex uses that evidence
+> probes supply the electrical measurements, and Benchy uses that evidence
 > alongside the firmware to investigate.”
 
 **Optional shot:** Use **Visual → Start phone photo link** and scan the QR to

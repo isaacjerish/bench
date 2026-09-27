@@ -578,7 +578,7 @@ function renderAgentChat() {
     node.className = isVoice ? 'voice-turn' : 'agent-message'; node.dataset.role = message.role;
     const label = document.createElement(isVoice ? 'strong' : 'span');
     if (!isVoice) label.className = 'agent-message-label';
-    label.textContent = message.role === 'user' ? 'You' : 'Benchy';
+    label.textContent = message.role === 'user' ? 'You' : isVoice ? 'Grok' : 'Benchy';
     const body = document.createElement('span'); body.textContent = message.text || '';
     if (message.photoCount) body.textContent += ` · ${message.photoCount} photo${message.photoCount === 1 ? '' : 's'} attached as visual context`;
     node.append(label, body); target.append(node);
@@ -684,7 +684,7 @@ async function sendAgentMessage(event, options = {}) {
     if (agentPhotos.length) {
       const result = await sendAgentMessage(null, {message:voiceText, fromVoice:true, photos:agentPhotos.map(photo => photo.dataUrl)});
       clearAgentPhotos();
-      sendVoiceEvent({type:'conversation.item.create', item:{type:'message', role:'user', content:[{type:'input_text', text:'Codex investigation result: ' + result + '. Explain the result to the user conversationally, using the attached photo as visual context only.'}]}});
+      sendVoiceEvent({type:'conversation.item.create', item:{type:'message', role:'user', content:[{type:'input_text', text:'Project tool result: ' + result + '. Explain the actual result in your own voice without narrating an internal handoff. The attached photo is visual context only.'}]}});
       sendVoiceEvent({type:'response.create'});
       return;
     }
@@ -769,9 +769,9 @@ async function sendAgentMessage(event, options = {}) {
     agentState.active = false; agentState.aborter = null; agentState.voiceTurn = false;
     el('agent-stop').hidden = true; el('agent-send').disabled = !agentConfigured; el('agent-flash-open').disabled = false;
   }
-  if (requestError) return 'Codex could not complete the request: ' + requestErrorMessage + ' Do not present this as a successful investigation.';
+  if (requestError) return 'The project task failed. The dashboard shows the detailed error. Do not present this as a successful investigation.';
   return reply.text || (
-    'Codex finished without a response. Check the local dashboard terminal for details.');
+    'The project task finished without a response. Check the local dashboard terminal for details.');
 }
 let agentPhotos = [];
 async function prepareAgentPhoto(file) {
@@ -943,24 +943,24 @@ async function loadVoiceStatus() {
   try {
     const response = await fetch('/api/voice/status', {cache:'no-store'}), data = await response.json();
     const button = el('agent-voice-toggle'); button.disabled = !data.configured;
-    voice.instructions = data.instructions || 'You are Benchy, the natural Grok voice agent in a hardware debugging website. Speak warmly and concisely like a senior engineer at the bench. Ask one focused question at a time. For code diagnosis, circuit measurements, or evidence-backed claims, call ask_codex with the symptom, useful conversation context, and the next investigation. Wait for Codex and explain its result naturally. Never invent readings, claim to see wiring, suggest 5 V or unknown voltage on P1/P2, or authorize flashing. Treat photos as supporting context, not electrical proof. Preview readings are synthetic.';
+    voice.instructions = data.instructions || 'You are Grok, the hardware debugging partner in Benchy. Speak concisely in first person without narrating routing or backend names. Use work_on_project to inspect and edit source, prepare requested firmware fixes, run builds, and take read-only measurements. Read-only probes do not prevent code edits. Wait for the actual tool result before claiming success. Uploads require the separate reviewed Build & flash action. Never invent readings or suggest unknown voltages on probes. Photos are context; Preview readings are synthetic.';
     document.body.dataset.voiceConfigured = String(Boolean(data.configured));
     if (data.configured) voiceState('idle', 'Ready · voice conversation and interruption available.');
     else voiceState('error', 'Set XAI_API_KEY before launching the dashboard to enable voice.');
   } catch { voiceState('error', 'Voice setup status is unavailable.'); }
 }
-async function askCodexFromVoice(args) {
+async function workOnProjectFromVoice(args) {
   if (!args || typeof args !== 'object' || agentState.active)
-    return 'Codex is already handling another request. Wait for that investigation to finish, then ask again.';
+    return 'A project task is already running. Wait for it to finish, then ask again.';
   const problem = String(args.problem || '').slice(0, 3000);
   const context = String(args.context || '').slice(0, 3000);
   const investigation = String(args.investigation || '').slice(0, 2000);
   if (!problem || !investigation) return 'The handoff did not include a clear problem and investigation request. Ask the user one clarifying question, then try again.';
   const message = [
-    'The user is debugging with Grok as the conversational voice agent. Please investigate this issue and provide a concise, evidence-based response that Grok can explain aloud.',
+    'The user is working with Grok in the Benchy voice UI. Complete the requested project task, including actual local source edits when the user requests a firmware or code fix. Hardware measurements are read-only; source files are editable. Never upload firmware. Give a concise first-person result for Grok to explain aloud, without narrating backend names or handoffs. Only claim edits that were actually saved, and direct the user to review and Build & flash when relevant.',
     'User problem: ' + problem,
     'Conversation context and what has already been tried: ' + (context || 'None supplied.'),
-    'Requested investigation: ' + investigation,
+    'Requested investigation or source change: ' + investigation,
     'Current dashboard context (may be stale; take fresh measurements for explicit test requests): ' + JSON.stringify(voiceContext()),
   ].join('\n\n');
   // Bound context to the server's message limit.
@@ -1010,8 +1010,9 @@ async function executePendingVoiceTools(generation) {
   for (const call of calls) {
     let result;
     try {
+      if (call.name !== 'work_on_project') throw Error('This project tool is unavailable. Restart the voice conversation.');
       const args = JSON.parse(call.arguments || '{}');
-      result = await askCodexFromVoice(args);
+      result = await workOnProjectFromVoice(args);
     } catch (error) { result = {error:error.message || 'Tool call failed'}; }
     outputs.push({type:'conversation.item.create', item:{type:'function_call_output', call_id:call.call_id,
       output:typeof result === 'string' ? result : JSON.stringify(result)}});
@@ -1023,16 +1024,16 @@ async function executePendingVoiceTools(generation) {
   if (waitMs) await new Promise(resolve => setTimeout(resolve, Math.min(waitMs + 30, 30_000)));
   if (voice.active && generation === voice.generation) {
     sendVoiceEvent({type:'response.create'});
-    voiceState('thinking', 'Measurements complete · preparing the spoken summary…');
+    voiceState('thinking', 'Project task finished · preparing the spoken summary…');
   }
 }
 function handleVoiceEvent(event, generation) {
   if (!voice.active || generation !== voice.generation) return;
   if (event.type === 'session.created') {
     const snapshot = voiceContext();
-    const instructions = (voice.instructions || 'You are Benchy, the natural Grok voice agent. Be concise and supportive. For diagnosis or measurements, call ask_codex; never invent readings or infer electrical facts from a photo.') +
-      ' Send the user symptom and relevant conversation history to Codex. Include current dashboard evidence; Gemini turns attached photos into a text description that Codex receives as fallible visual context. Do not treat the description or image as electrical proof. P1, P2, and P3 are safe only for known 0–3.3 V signals with common ground. If physical placement may have changed, ask the user to confirm it. If Preview is on, readings are synthetic. Current dashboard snapshot (source labels are authoritative): ' + JSON.stringify(snapshot);
-    voice.tools.forEach(tool => { if (tool.name === 'build_and_flash_dut' || tool.name === 'flash_dut') throw Error('Write tools are blocked in voice mode'); });
+    const instructions = (voice.instructions || 'You are Grok in Benchy. Use work_on_project for source edits and measurements. Keep uploads in the separate reviewed Build & flash action. Speak in first person without narrating internal routing.') +
+      ' Include the user request, relevant conversation history, and current evidence in project tool calls. Gemini photo descriptions are fallible visual context, not electrical proof. P1, P2, and P3 are safe only for known 0–3.3 V signals with common ground. If physical placement may have changed, ask the user to confirm it before choosing new probe locations. If Preview is on, readings are synthetic. Current dashboard snapshot (source labels are authoritative): ' + JSON.stringify(snapshot);
+    voice.tools.forEach(tool => { if (tool.name !== 'work_on_project') throw Error('Unexpected voice tool. Reload the dashboard before continuing.'); });
     sendVoiceEvent({type:'session.update', session:{
       modalities:['text','audio'], voice:'eve', instructions,
       turn_detection:{type:'server_vad'},
@@ -1131,7 +1132,7 @@ async function startVoice() {
       }),
     ]);
     voice.tools = toolData.tools || [];
-    if (!voice.tools.length) throw Error('No read-only Benchy tools are available. Install the MCP extra.');
+    if (!voice.tools.length) throw Error('No Benchy project tools are available. Check the dashboard setup.');
     const url = 'wss://api.x.ai/v1/realtime?model=grok-voice-latest';
     voice.socket = new WebSocket(url, ['xai-client-secret.' + token.value]);
     voice.socket.onmessage = message => {
@@ -1451,7 +1452,7 @@ function renderVisual(view) {
     : 'Scan with your phone, then photograph the device under test.';
   else if (view.status === 'uploaded') message.textContent = 'Image received. Analysis will begin automatically.';
   else if (view.status === 'analyzing') message.textContent = 'Analyzing hardware from the photo and the declared harness.';
-  else if (view.status === 'complete') message.textContent = `${view.photo_count || 1} photo${view.photo_count === 1 ? '' : 's'} ready. Ask Benchy a question; Gemini will describe them and pass the text into Codex's debugging context.`;
+  else if (view.status === 'complete') message.textContent = `${view.photo_count || 1} photo${view.photo_count === 1 ? '' : 's'} ready. Ask Benchy a question to include them as visual context.`;
   else message.textContent = 'Photo context is ready.';
   showQr(view.qr_svg);
   el('visual-scan').hidden = !view.qr_svg;

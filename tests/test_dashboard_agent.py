@@ -10,7 +10,7 @@ from urllib.error import HTTPError
 
 import pytest
 
-from benchos.dashboard import agent_mcp_config, codex_event_error, safe_agent_diagnostic
+from benchos.dashboard import agent_command, agent_mcp_config, codex_event_error, safe_agent_diagnostic
 from benchos.visual_inspection import GeminiRestProvider, VisualError
 
 
@@ -23,6 +23,20 @@ def test_mcp_command_keeps_venv_interpreter_and_imports_tools():
         **config['env']})
     assert result.returncode == 0, result.stderr
     assert 'benchy-readonly' in result.stdout
+
+
+@pytest.mark.parametrize('thread_id', [None, '11111111-1111-4111-8111-111111111111'])
+def test_followups_retain_source_edit_access_without_writable_hardware_tools(thread_id):
+    args = agent_command('codex', thread_id)
+    overrides = [args[index + 1] for index, value in enumerate(args) if value == '--config']
+    config = tomllib.loads('\n'.join(overrides))
+    assert config['sandbox_mode'] == 'workspace-write'
+    assert config['mcp_servers']['benchy']['args'] == ['-m', 'mcp_server.agent_readonly']
+    assert '--dangerously-bypass-approvals-and-sandbox' not in args
+    if thread_id:
+        assert args[1:3] == ['exec', 'resume']
+        assert args[-2:] == [thread_id, '-']
+        assert '--sandbox' not in args
 
 
 def test_dashboard_mcp_exposes_measurements_without_firmware_writes():

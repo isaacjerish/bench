@@ -1,4 +1,4 @@
-"""Voice endpoints keep credentials local and tool access read-only."""
+"""Voice can request source edits; physical tools cannot upload firmware."""
 
 import io
 import json
@@ -76,7 +76,7 @@ def test_voice_endpoints_require_local_origin_and_block_write_calls(monkeypatch)
             assert json.load(response)["configured"] is False
         with urlopen(base + "/api/voice/tools") as response:
             exposed = {tool["name"] for tool in json.load(response)["tools"]}
-            assert exposed == {"ask_codex"}
+            assert exposed == {"work_on_project"}
             assert "build_and_flash_dut" not in exposed
         body = json.dumps({"name": "build_and_flash_dut", "arguments": {}}).encode()
         request = Request(base + "/api/voice/tool", data=body,

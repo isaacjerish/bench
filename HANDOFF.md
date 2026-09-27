@@ -1,5 +1,31 @@
 # Benchy handoff
 
+## Current: voice can prepare firmware edits (2026-09-26)
+
+- The earlier voice reply that it could not edit firmware was wrong. Its prompt
+  called the entire voice path read-only even though only physical probe tools
+  and direct upload are read-only. Grok now uses `work_on_project` for source
+  edits as well as investigation, speaks in first person, and does not narrate
+  the coding backend. The website still discloses its actual services.
+- Resumed local coding sessions also fell back to a read-only sandbox. The
+  dashboard now passes `sandbox_mode="workspace-write"` for both new and
+  resumed sessions while keeping the Benchy MCP hardware tools read-only.
+  A live website voice test changed an isolated source fixture from 50 to
+  250 ms and verified it on disk; the fixture was removed afterward. Grok's
+  visible reply was labeled **Grok** and did not mention backend routing.
+- Source editing does not upload firmware. After the demo's wiring repair,
+  ask Grok to fix the blink timing; review its tracked diff in the website,
+  then use the separate **Build & flash** dialog with its explicit confirmation.
+- **The filming baseline is intact:** C6 sensor input wires are swapped,
+  `dut_examples/parcel_guard/config.h` still selects fault 3, and the flashed
+  C6 still reports `fault=3`. The S3 measured P1 about 2.3 V, P2 0 V and
+  D3 20 transitions/s in the latest live dashboard check. Healthy firmware
+  selects fault 0 and should blink at 2 Hz rather than 10 Hz (five times
+  slower). Do not repair either seeded fault before filming.
+- 18 targeted Python tests, 13 Node UI tests, JS syntax, and diff checks
+  passed. The dashboard was restarted on port
+  8765 and left running; the voice test was ended and the microphone unmuted.
+
 ## Current runtime fix: show the real Codex failure
 
 - User restarted the dashboard manually after the earlier approval-limit block,
