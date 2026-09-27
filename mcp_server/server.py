@@ -155,6 +155,16 @@ def check_circuit(profile: str) -> dict[str, Any]:
 
 
 @mcp.tool(structured_output=True)
+def latest_visual_inspection() -> dict[str, Any]:
+    """Return the latest structured visual findings.
+
+    This is a camera hypothesis, not a photograph and not electrical proof.
+    """
+    from benchos.visual_inspection import read_latest_findings
+    return read_latest_findings()
+
+
+@mcp.tool(structured_output=True)
 def read_imu_stream(dut_port: str) -> dict[str, Any]:
     """Read one C6 MPU acceleration report; this is a DUT claim, not independent physical proof."""
     try:

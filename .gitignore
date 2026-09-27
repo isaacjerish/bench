@@ -1,7 +1,9 @@
 __pycache__/
+.env
 .pytest_cache/
 *.egg-info/
 .venv/
 measurements.jsonl
 scripts/arduino-cli.yaml
 validation_runs/dashboard/
+.benchos/

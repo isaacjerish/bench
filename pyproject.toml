@@ -7,7 +7,7 @@ name = "benchos"
 version = "0.1.0"
 description = "Physical circuit measurements for coding agents"
 requires-python = ">=3.10"
-dependencies = ["pyserial>=3.5,<4", "PyYAML>=6,<7"]
+dependencies = ["pyserial>=3.5,<4", "PyYAML>=6,<7", "segno>=1.6,<2"]
 
 [project.optional-dependencies]
 mcp = ["mcp>=2,<3"]

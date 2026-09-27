@@ -6,7 +6,7 @@
   <aside class="rail">
     <a class="brand" href="#top"><span class="brand-mark">▣</span><strong>BENCHY</strong></a>
     <span class="rail-kicker">HARDWARE / INTELLIGENCE</span>
-    <nav aria-label="Workspace sections"><a href="#design"><span>01</span>Design map</a><a href="#probes"><span>02</span>Probes</a><a id="signals-link" href="#digital-taps"><span>03</span><b id="signals-nav-label">Signal taps</b></a><a href="#investigation"><span>04</span>Investigation</a><a href="#serial"><span>05</span>Serial monitor</a><a href="#records"><span>06</span>Saved captures</a><a href="#source"><span>07</span>Source</a></nav>
+    <nav aria-label="Workspace sections"><a href="#visual"><span>VI</span>Visual</a><a href="#design"><span>01</span>Design map</a><a href="#probes"><span>02</span>Probes</a><a id="signals-link" href="#digital-taps"><span>03</span><b id="signals-nav-label">Signal taps</b></a><a href="#investigation"><span>04</span>Investigation</a><a href="#serial"><span>05</span>Serial monitor</a><a href="#records"><span>06</span>Saved captures</a><a href="#source"><span>07</span>Source</a></nav>
     <div class="rail-bottom"><i></i><p>Physical evidence for<br>the circuit in front of you.</p><small>LOCAL INSTRUMENT · 2026</small></div>
   </aside>
   <main id="top"><header class="topbar"><span>WORKSPACE <b>/</b> CURRENT DESIGN</span><div><span id="connection-dot" class="connection-dot"></span><span id="connection-label">Checking ports</span><button id="preview-toggle" class="small-button" type="button" aria-pressed="false">Preview</button></div></header>
@@ -34,6 +34,19 @@
       <header class="section-head"><div><span>PROBE COVERAGE / USER DECLARED</span><h2>Every signal has a place.</h2></div><div class="coverage-total"><strong id="coverage-summary">—</strong><small id="coverage-description">Loading pin declarations</small></div></header>
       <div class="table-scroll"><table class="coverage-table"><thead><tr><th scope="col">DUT PIN</th><th scope="col">NET</th><th scope="col">FUNCTION</th><th scope="col">OBSERVED BY</th><th scope="col">LATEST EVIDENCE</th></tr></thead><tbody id="coverage-rows"></tbody></table></div>
       <p class="panel-footnote">Coverage describes declared connections. It does not prove continuity or discover pins used by the firmware.</p>
+    </section>
+    <section id="visual" class="panel visual-panel" aria-label="Visual inspection">
+      <header class="section-head"><div><span>VISUAL INSPECTION</span><h2>Add a photo of the device under test.</h2></div><span id="visual-status" class="revision-pill">READY</span></header>
+      <div class="visual-layout">
+        <div class="visual-qr-column"><div id="visual-qr" class="visual-qr" hidden></div><p id="visual-scan" class="visual-note" hidden>Scan with your phone</p></div>
+        <div class="visual-column">
+          <p id="visual-message">Start a session to get a temporary QR code. The code contains only a capture link, not the photo.</p>
+          <div class="head-actions visual-actions"><button id="visual-start" class="primary-button" type="button">Start visual inspection</button></div>
+          <figure class="visual-figure"><img id="visual-photo" alt="Uploaded device under test" hidden></figure>
+          <div id="visual-findings"></div>
+        </div>
+      </div>
+      <p class="panel-footnote">The camera generates hypotheses. Benchy’s probes verify reality.</p>
     </section>
     <section id="probes" class="probe-section"><header class="section-head"><div><span>03 / PHYSICAL INPUTS</span><h2>Three points. One circuit.</h2></div><div class="head-actions"><button id="auto-sample" class="small-button" type="button" aria-pressed="true">Live: on</button><button id="sample-probes" class="primary-button" type="button">Sample probes ↗</button></div></header><p class="section-intro">Each input is limited to a known 0–3.3 V node. Connected probes are sampled in order; fast events need a different capture tool.</p>
       <div class="probe-grid">

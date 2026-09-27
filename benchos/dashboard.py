@@ -1,4 +1,8 @@
-"""Loopback-only web dashboard for live BenchOS measurements."""
+"""Local web dashboard for live BenchOS measurements.
+
+The dashboard itself stays on localhost. Phone capture is a separate,
+token-limited route and is reachable only when a public base URL is configured.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +16,7 @@ import re
 import subprocess
 import threading
 import time
+import traceback
 import urllib.error
 import urllib.request
 from collections import deque
@@ -34,6 +39,12 @@ from .protocol import BenchError
 from .serial_lock import SerialPortLock
 from .records import list_records, read_record, write_record
 from .activity import compare_activity
+from .visual_inspection import (
+    SessionStore, VisualError, analyze_dut_image, build_inspection_context,
+    execute_check, findings_document, is_phone_capture_path, local_dashboard_allowed,
+    message_page, parse_capture_path, resolve_check, summarize_physical, validate_analysis,
+    validate_image, write_latest_findings, configured_model_name,
+)
 
 MODES = {"light", "led", "servo", "imu"}
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -333,6 +344,10 @@ class DashboardState:
         self._capture_owner: int | None = None
         self._serial_events = deque(maxlen=400)
         self._serial_seq = 0
+        self.last_probes: dict | None = None
+        self.last_capture: dict | None = None
+        self.visual = SessionStore()
+        self.vision_analyzer = None
 
     @contextmanager
     def instrument_access(self):
@@ -374,6 +389,19 @@ class DashboardState:
                     "continuous": False, "latest_seq": self._serial_seq,
                     "events": [item for item in self._serial_events if item["seq"] > after_seq and item["port"] == port]}
 
+    def recent_serial_lines(self, limit: int = 12) -> list[str]:
+        return [str(event.get("line", ""))[:180] for event in list(self._serial_events)[-limit:]]
+
+    def inspection_context(self) -> dict:
+        harness = None
+        error = None
+        try:
+            harness = describe_harness()
+        except (OSError, ValueError, yaml.YAMLError) as exc:
+            error = str(exc)
+        return build_inspection_context(harness, self.last_probes, self.last_capture,
+                                        self.recent_serial_lines(), error)
+
     def probe_sample(self, port: str, harness: dict | None = None) -> dict:
         if port not in set(candidate_ports()):
             raise ValueError("S3 port is not currently available")
@@ -395,6 +423,7 @@ class DashboardState:
         pair["timestamp"] = datetime.now(timezone.utc).isoformat()
         pair["source"] = "s3_physical"
         pair["voltage_limit_v"] = 3.3
+        self.last_probes = pair
         return pair
 
     def bus_sample(self, port: str, duration_ms: int, dut_port: str = "", *, digital_taps: bool = False,
@@ -469,6 +498,7 @@ class DashboardState:
         if activity_rules:
             observed["activity_checks"] = compare_activity(observed, events, activity_rules)
             observed["condition_serial_events"] = events
+        self.last_capture = observed
         return observed
 
     def capture_record(self, payload: dict) -> dict:
@@ -554,6 +584,42 @@ class DashboardState:
     def close(self) -> None:
         pass
 
+    def accept_visual_image(self, token: str, data: bytes, content_type: str) -> dict:
+        mime = validate_image(data, content_type)
+        view = self.visual.store_image(token, data, mime)
+        threading.Thread(target=self._analyze_visual, args=(token,), daemon=True).start()
+        return view
+
+    def _analyze_visual(self, token: str) -> None:
+        try:
+            image, mime = self.visual.begin_analysis(token)
+            context = self.inspection_context()
+            if self.vision_analyzer is not None:
+                analysis = validate_analysis(self.vision_analyzer(image, mime, context))
+            else:
+                analysis = analyze_dut_image(image, mime, context)
+            if self.visual.complete(token, analysis, context, configured_model_name()):
+                write_latest_findings(findings_document(analysis, context, configured_model_name()))
+        except VisualError as exc:
+            self.visual.fail(token, str(exc))
+        except Exception:
+            traceback.print_exc()
+            self.visual.fail(token, "Visual analysis failed. See the dashboard terminal for details.")
+
+    def run_visual_check(self, lab_port: str, measurement: str, target: str) -> dict:
+        spec = resolve_check(measurement, target)
+        if lab_port not in set(candidate_ports()):
+            raise ValueError("S3 port is not currently available")
+        with self.instrument_access():
+            with BenchClient(lab_port) as client:
+                reading = execute_check(client, spec)
+        record = {"measurement": spec["measurement"],
+                  "target": spec.get("probe") or spec.get("profile"),
+                  "summary": summarize_physical(spec, reading), "reading": reading,
+                  "timestamp": datetime.now(timezone.utc).isoformat(),
+                  "source": "s3_physical", "evidence": "physical"}
+        return {"check": record, "session": self.visual.add_physical_check(record)}
+
     def snapshot(self, mode: str, lab_port: str, dut_port: str) -> dict:
         if mode not in MODES:
             raise ValueError("Unknown demo mode")
@@ -607,8 +673,36 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # Frequent dashboard polls would otherwise flood the terminal.
         pass
 
+    def _remote_dashboard_blocked(self, path: str) -> bool:
+        if is_phone_capture_path(path):
+            return False
+        if local_dashboard_allowed(self.client_address[0], self.headers.get("Host", "")):
+            return False
+        self._json({"error": "This Benchy dashboard is only available on the local computer."},
+                   HTTPStatus.FORBIDDEN)
+        return True
+
+    def _local_json_post(self) -> bool:
+        origin = self.headers.get("Origin")
+        expected_origin = f"http://127.0.0.1:{self.server.server_address[1]}"
+        return (self.headers.get("X-Benchy-Local") == "1"
+                and self.headers.get_content_type() == "application/json"
+                and (not origin or origin == expected_origin))
+
     def do_GET(self) -> None:
         route = urlsplit(self.path)
+        if self._remote_dashboard_blocked(route.path):
+            return
+        capture = parse_capture_path(route.path)
+        if capture:
+            self._get_capture(capture[0], capture[1] == "/status")
+            return
+        if route.path == "/api/visual/session/image":
+            self._get_visual_image()
+            return
+        if route.path == "/api/visual/session":
+            self._json(self.server.state.visual.current_view())
+            return
         if route.path == "/api/voice/status":
             self._json({"configured": bool(os.environ.get("XAI_API_KEY")),
                         "model": "grok-voice-latest",
@@ -710,8 +804,80 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
+    def _get_capture(self, token: str, status_only: bool) -> None:
+        try:
+            state = self.server.state.visual.phone_state(token)
+        except VisualError as exc:
+            if status_only:
+                self._json({"error": str(exc)}, exc.status)
+            else:
+                self._html(message_page("Capture link", str(exc)), exc.status)
+            return
+        if status_only:
+            self._json(state)
+            return
+        if state["status"] == "expired":
+            self._html(message_page("Capture link expired", "Ask Benchy for a new QR code."), HTTPStatus.GONE)
+            return
+        page = files("benchos.dashboard_ui").joinpath("capture.html").read_text(encoding="utf-8")
+        self._html(page.replace("__BENCHY_TOKEN__", token).encode("utf-8"))
+
+    def _get_visual_image(self) -> None:
+        try:
+            data, mime = self.server.state.visual.image()
+        except VisualError as exc:
+            self._json({"error": str(exc)}, exc.status)
+            return
+        try:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+
+    def _html(self, data: bytes, status: HTTPStatus = HTTPStatus.OK) -> None:
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+
+    def _read_limited(self, limit: int) -> bytes:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise VisualError("Invalid upload size.") from exc
+        if length < 1 or length > limit:
+            raise VisualError("Image must be between 1 byte and 5 MB.")
+        data = self.rfile.read(length)
+        if len(data) != length:
+            raise VisualError("Upload ended early.")
+        return data
+
     def do_POST(self) -> None:
         route = urlsplit(self.path).path
+        if self._remote_dashboard_blocked(route):
+            return
+        capture = parse_capture_path(route)
+        if capture and capture[1] == "":
+            self._post_capture(capture[0])
+            return
+        if capture:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        if route == "/api/visual/session":
+            self._post_visual_session()
+            return
+        if route == "/api/visual/verify":
+            self._post_visual_verify()
+            return
         if route in {"/api/voice/session", "/api/voice/tool"}:
             self._do_voice_post(route)
             return
@@ -737,6 +903,54 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except BenchError as exc:
             self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
         except (OSError, ValueError, yaml.YAMLError) as exc:
+            self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+    def _post_capture(self, token: str) -> None:
+        try:
+            data = self._read_limited(5 * 1024 * 1024)
+            view = self.server.state.accept_visual_image(token, data, self.headers.get_content_type())
+            self._json(view, HTTPStatus.ACCEPTED)
+        except VisualError as exc:
+            self._json({"error": str(exc)}, exc.status)
+
+    def _post_visual_session(self) -> None:
+        if not self._local_json_post():
+            self._json({"error": "Local JSON request required"}, HTTPStatus.FORBIDDEN)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 <= length <= 2048:
+                raise ValueError("Invalid request size")
+            if length:
+                json.loads(self.rfile.read(length))
+            self._json(self.server.state.visual.start(), HTTPStatus.CREATED)
+        except VisualError as exc:
+            self._json({"error": str(exc)}, exc.status)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+    def _post_visual_verify(self) -> None:
+        if not self._local_json_post():
+            self._json({"error": "Local JSON request required"}, HTTPStatus.FORBIDDEN)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 1 <= length <= 4096:
+                raise ValueError("Invalid request size")
+            payload = json.loads(self.rfile.read(length))
+            if not isinstance(payload, dict):
+                raise ValueError("JSON object required")
+            measurement = payload.get("measurement")
+            target = payload.get("target") or ""
+            lab_port = payload.get("lab_port") or self.server.state.lab_port or ""
+            if not isinstance(measurement, str) or not isinstance(target, str) or not isinstance(lab_port, str):
+                raise ValueError("Measurement, target, and lab port must be text")
+            self._json(self.server.state.run_visual_check(lab_port, measurement, target))
+        except VisualError as exc:
+            self._json({"error": str(exc)}, exc.status)
+        except BenchError as exc:
+            self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
             self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
     def _do_voice_post(self, path: str) -> None:
@@ -802,6 +1016,32 @@ class DashboardServer(ThreadingHTTPServer):
         self.state = state
 
 
+def load_env_file(path: Path) -> list[str]:
+    """Fill unset variables from a local .env. A real environment variable always wins."""
+    try:
+        # Notepad and PowerShell write a BOM, which would otherwise become part
+        # of the first variable's name.
+        text = path.read_text(encoding="utf-8-sig")
+    except OSError:
+        return []
+    loaded = []
+    for line in text.splitlines():
+        entry = line.strip()
+        if entry.startswith("export "):
+            entry = entry[7:].lstrip()
+        if not entry or entry.startswith("#") or "=" not in entry:
+            continue
+        name, _, value = entry.partition("=")
+        name, value = name.strip(), value.strip()
+        if len(value) > 1 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if not name or name in os.environ:
+            continue
+        os.environ[name] = value
+        loaded.append(name)
+    return loaded
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="BenchOS local dashboard")
     parser.add_argument("--lab-port", help="ESP32-S3 serial port")
@@ -810,9 +1050,18 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if not 1 <= args.web_port <= 65535:
         parser.error("--web-port must be 1–65535")
+    loaded = load_env_file(REPO_ROOT / ".env")
+    if loaded:
+        print(f"Loaded from .env: {', '.join(loaded)}", flush=True)
+    bind = os.environ.get("BENCHY_BIND_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    if any(character in bind for character in " /\\?#"):
+        parser.error("BENCHY_BIND_HOST must be a host address such as 127.0.0.1 or 0.0.0.0")
     state = DashboardState(args.lab_port, args.dut_port)
-    server = DashboardServer(("127.0.0.1", args.web_port), state)
+    server = DashboardServer((bind, args.web_port), state)
     print(f"Benchy dashboard: http://127.0.0.1:{args.web_port}", flush=True)
+    if bind not in {"127.0.0.1", "localhost", "::1"}:
+        print("Phone capture listens on this bind address. Open the dashboard at "
+              f"http://127.0.0.1:{args.web_port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

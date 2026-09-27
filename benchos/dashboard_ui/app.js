@@ -271,6 +271,21 @@ function storeReading(sample, manual) {
     serial:serialEvents.filter(event => Math.abs(Date.parse(event.timestamp) - Date.parse(sample.timestamp)) <= 10000)});
   session = session.slice(-100); saveSession(); renderTimeline();
 }
+function timelineTitle(item) {
+  if (item.kind === 'visual') return 'VISUAL · ' + item.title;
+  if (item.kind === 'visual_analysis') return 'VISUAL ANALYSIS · ' + item.title;
+  if (item.kind === 'probe') return 'PROBE · ' + item.title;
+  return (item.manual ? 'CAPTURE · ' : '') + item.title;
+}
+function timelineDetail(item) {
+  if (item.detail) return item.detail;
+  if (item.sample && Array.isArray(item.sample.readings)) return item.sample.readings.map(row => row.probe).join(' + ');
+  return '';
+}
+function pushTimeline(entry) {
+  session.push({time:Date.now(), state:entry.state || 'info', title:entry.title, kind:entry.kind || '', detail:entry.detail || '', manual:false});
+  session = session.slice(-100); saveSession(); renderTimeline();
+}
 function renderTimeline() {
   const target = el('timeline'); target.replaceChildren();
   if (!session.length) { const p = document.createElement('p'); p.className = 'empty-state'; p.textContent = 'Measurements will appear here as they arrive.'; target.append(p); return; }
@@ -279,8 +294,8 @@ function renderTimeline() {
     row.setAttribute('aria-label', 'Inspect saved capture at ' + timeLabel(item.time));
     row.addEventListener('click', () => window.BenchyRecords.inspectSnapshot(item));
     const time = document.createElement('time'); time.textContent = timeLabel(item.time);
-    const title = document.createElement('strong'); title.textContent = (item.manual ? 'CAPTURE · ' : '') + item.title;
-    const probes = document.createElement('span'); probes.className = 'timeline-probe'; probes.textContent = item.sample.readings.map(row => row.probe).join(' + ');
+    const title = document.createElement('strong'); title.textContent = timelineTitle(item);
+    const probes = document.createElement('span'); probes.className = 'timeline-probe'; probes.textContent = timelineDetail(item);
     const mark = document.createElement('span'); mark.className = 'timeline-mark'; mark.textContent = item.state === 'pass' ? '✓' : item.state === 'fail' ? '!' : '·';
     row.append(time, title, probes, mark); target.append(row);
   }
@@ -870,8 +885,258 @@ el('serial-export').addEventListener('click', () => download('benchy-serial.json
 el('serial-filter').addEventListener('input', renderSerial);
 el('source-select').addEventListener('change', loadSource);
 el('source-refresh').addEventListener('click', loadCode);
+
+let visualSeen = {id:null, image:false, analysis:false};
+let visualPoll = null;
+let visualRun = false;
+let visualBusy = false;
+
+function showQr(svg) {
+  const slot = el('visual-qr');
+  if ((slot.dataset.svg || '') === (svg || '')) return;
+  slot.dataset.svg = svg || '';
+  slot.replaceChildren();
+  if (!svg || !/^<svg[\s>]/i.test(svg) || /<script|on[a-z]+\s*=/i.test(svg)) {
+    slot.hidden = true;
+    return;
+  }
+  const holder = document.createElement('div');
+  holder.innerHTML = svg;
+  const node = holder.querySelector('svg');
+  if (!node) { slot.hidden = true; return; }
+  slot.hidden = false;
+  slot.append(node);
+}
+function addVisualList(parent, title, rows, confidence) {
+  if (!rows.length) return;
+  const block = document.createElement('section');
+  block.className = 'visual-block';
+  const heading = document.createElement('h3');
+  heading.textContent = title;
+  const list = document.createElement('ul');
+  list.className = 'visual-list';
+  for (const row of rows) {
+    const item = document.createElement('li');
+    item.textContent = row.text;
+    if (row.confidence) {
+      const badge = document.createElement('span');
+      badge.className = 'confidence';
+      badge.textContent = row.confidence;
+      item.append(badge);
+    }
+    list.append(item);
+  }
+  block.append(heading, list);
+  if (confidence) block.dataset.confidence = confidence;
+  parent.append(block);
+}
+function renderFindings(view) {
+  const root = el('visual-findings');
+  root.replaceChildren();
+  const analysis = view.analysis;
+  if (!analysis) return;
+  const hardware = (analysis.observed_hardware || []).map(item => ({text:item.item, confidence:item.confidence}));
+  const observations = (analysis.observations || []).map(item => ({text:item.observation, confidence:item.confidence}));
+  addVisualList(root, 'OBSERVED HARDWARE', hardware);
+  addVisualList(root, 'OBSERVATIONS', observations);
+  if (!(analysis.possible_issues || []).length && !hardware.length && !observations.length) {
+    const empty = document.createElement('p');
+    empty.className = 'visual-note';
+    empty.textContent = 'No visually supported findings in this photo.';
+    root.append(empty);
+  }
+  for (const issue of analysis.possible_issues || []) {
+    const card = document.createElement('article');
+    card.className = 'hypothesis';
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = 'HYPOTHESIS · NOT ELECTRICALLY VERIFIED';
+    const title = document.createElement('h3');
+    title.textContent = issue.issue;
+    const confidence = document.createElement('span');
+    confidence.className = 'confidence';
+    confidence.textContent = issue.confidence || '';
+    card.append(badge, title, confidence);
+    for (const note of issue.evidence || []) {
+      const line = document.createElement('p');
+      line.textContent = note;
+      card.append(line);
+    }
+    root.append(card);
+  }
+  const strip = document.createElement('div');
+  strip.className = 'evidence-strip';
+  const visualText = observations.map(item => item.text).join(' ') || 'No visual observation yet.';
+  const context = view.context || {};
+  const probes = (context.expected_harness && context.expected_harness.probes) || {};
+  const sourceText = Object.entries(probes).map(([name, probe]) => name + ' declared ' + (probe.state || 'unknown') + ' on ' + (probe.net || 'no net')).join(' · ') || 'No harness declaration loaded.';
+  const physicalText = (view.physical_checks || []).map(item => item.summary).join(' · ') || 'No probe reading yet. Visual issues stay hypotheses.';
+  for (const [label, text] of [['VISUAL', visualText], ['SOURCE', sourceText], ['PHYSICAL', physicalText]]) {
+    const article = document.createElement('article');
+    const heading = document.createElement('h3');
+    heading.textContent = label;
+    const body = document.createElement('p');
+    body.textContent = text;
+    article.append(heading, body);
+    strip.append(article);
+  }
+  root.append(strip);
+  if ((view.physical_checks || []).length) {
+    const facts = document.createElement('section');
+    facts.className = 'visual-block';
+    const heading = document.createElement('h3');
+    heading.textContent = 'PHYSICAL FACT';
+    facts.append(heading);
+    for (const check of view.physical_checks) {
+      const row = document.createElement('div');
+      row.className = 'fact-row';
+      const text = document.createElement('span');
+      text.textContent = check.summary;
+      const mark = document.createElement('span');
+      mark.className = 'fact-mark';
+      mark.textContent = '✓';
+      mark.title = 'Measured by Benchy';
+      row.append(text, mark);
+      facts.append(row);
+    }
+    const note = document.createElement('p');
+    note.className = 'visual-note';
+    note.textContent = 'The check mark means a probe reading was taken. It does not turn a visual hypothesis into a verified fault.';
+    facts.append(note);
+    root.append(facts);
+  }
+  const checks = analysis.recommended_checks || [];
+  if (checks.length) {
+    const block = document.createElement('section');
+    block.className = 'visual-block';
+    const heading = document.createElement('h3');
+    heading.textContent = 'RECOMMENDED VERIFICATION';
+    block.append(heading);
+    for (const check of checks) {
+      if (!check.supported) {
+        const line = document.createElement('p');
+        line.className = 'unsupported';
+        line.textContent = (check.measurement || 'Suggestion') + ' — Benchy cannot run this check. ' + (check.reason || '');
+        block.append(line);
+        continue;
+      }
+      const row = document.createElement('div');
+      row.className = 'check-row';
+      const copy = document.createElement('p');
+      copy.textContent = check.reason;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'small-button';
+      button.textContent = check.label;
+      button.addEventListener('click', () => runVisualCheck(check.measurement, check.target || '', button));
+      row.append(copy, button);
+      block.append(row);
+    }
+    root.append(block);
+  }
+  addVisualList(root, 'LIMITATIONS', (analysis.limitations || []).map(text => ({text})));
+}
+function noteVisual(view) {
+  const id = view.started_at || null;
+  if (visualSeen.id !== id) visualSeen = {id, image:false, analysis:false};
+  if (view.image_ready && !visualSeen.image) {
+    pushTimeline({kind:'visual', state:'info', title:'DUT image received', detail:'VISUAL'});
+    visualSeen.image = true;
+  }
+  if (view.status === 'complete' && view.analysis && !visualSeen.analysis) {
+    const issue = view.analysis.possible_issues && view.analysis.possible_issues[0]
+      ? view.analysis.possible_issues[0].issue : 'Visual inspection complete';
+    pushTimeline({kind:'visual_analysis', state:'info', title:issue, detail:'VISUAL ANALYSIS'});
+    visualSeen.analysis = true;
+  }
+}
+function renderVisual(view) {
+  setText('visual-status', view.status_label || 'READY');
+  const message = el('visual-message');
+  if (!view.active) {
+    message.textContent = view.availability && view.availability.message
+      ? view.availability.message
+      : (view.status === 'expired'
+        ? 'This capture link has expired. Start again for a new QR code.'
+        : 'Start a session to get a temporary QR code. The code contains only a capture link, not the photo.');
+  } else if (view.error) message.textContent = view.error;
+  else if (view.status === 'waiting') message.textContent = (view.availability && view.availability.warning)
+    ? view.availability.warning
+    : 'Scan with your phone, then photograph the device under test.';
+  else if (view.status === 'uploaded') message.textContent = 'Image received. Analysis will begin automatically.';
+  else if (view.status === 'analyzing') message.textContent = 'Analyzing hardware from the photo and the declared harness.';
+  else if (view.status === 'complete') message.textContent = view.analysis && !(view.analysis.observations || []).length && !(view.analysis.possible_issues || []).length
+    ? 'Analysis complete. The photo did not produce a useful visual finding.'
+    : 'Analysis complete. Possible issues are hypotheses until a probe measures them.';
+  else message.textContent = 'Visual inspection is ready.';
+  showQr(view.qr_svg);
+  el('visual-scan').hidden = !view.qr_svg;
+  const photo = el('visual-photo');
+  if (view.image_ready) {
+    const next = '/api/visual/session/image?rev=' + encodeURIComponent(view.revision || 0);
+    if (photo.dataset.source !== next) { photo.dataset.source = next; photo.src = next; }
+    photo.hidden = false;
+  } else { photo.hidden = true; photo.removeAttribute('src'); delete photo.dataset.source; }
+  renderFindings(view);
+  noteVisual(view);
+  const keepPolling = view.active && view.status !== 'complete' && view.status !== 'error';
+  if (keepPolling && !visualPoll) visualPoll = setInterval(() => { refreshVisual().catch(() => {}); }, 1000);
+  if (!keepPolling && visualPoll) { clearInterval(visualPoll); visualPoll = null; }
+}
+async function refreshVisual() {
+  const response = await fetch('/api/visual/session');
+  const view = await response.json();
+  if (!response.ok) throw Error(view.error || 'Visual inspection is unavailable.');
+  renderVisual(view);
+  return view;
+}
+async function startVisual() {
+  if (visualBusy) return;
+  visualBusy = true;
+  el('visual-start').disabled = true;
+  try {
+    const response = await fetch('/api/visual/session', {method:'POST',
+      headers:{'Content-Type':'application/json','X-Benchy-Local':'1'}, body:'{}'});
+    const view = await response.json();
+    if (!response.ok) throw Error(view.error || 'Could not start visual inspection.');
+    renderVisual(view);
+  } catch (error) {
+    setText('visual-status', 'ERROR');
+    el('visual-message').textContent = error.message;
+  } finally {
+    visualBusy = false;
+    el('visual-start').disabled = false;
+  }
+}
+async function runVisualCheck(measurement, target, button) {
+  if (visualRun) return;
+  const lab = el('lab-port').value;
+  if (!lab) { el('visual-message').textContent = 'Choose the S3 port before running a probe check.'; return; }
+  visualRun = true;
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/visual/verify', {method:'POST',
+      headers:{'Content-Type':'application/json','X-Benchy-Local':'1'},
+      body:JSON.stringify({measurement, target, lab_port:lab})});
+    const data = await response.json();
+    if (!response.ok) throw Error(data.error || 'Check failed');
+    const failed = data.check.reading && data.check.reading.pass === false;
+    pushTimeline({kind:'probe', state:failed ? 'fail' : 'pass', title:data.check.summary, detail:'PROBE'});
+    if (data.check.reading && data.check.reading.pass === true) {
+      pushTimeline({kind:'probe', state:'pass', title:'Physical signal recorded', detail:'PASS'});
+    }
+    renderVisual(data.session);
+  } catch (error) {
+    el('visual-message').textContent = error.message;
+  } finally {
+    visualRun = false;
+    button.disabled = false;
+  }
+}
+el('visual-start').addEventListener('click', startVisual);
 renderTimeline();
 loadVoiceStatus();
+refreshVisual().catch(() => {});
 loadHarness().then(() => Promise.all([loadPorts(), loadCode()])).then(() => {
   renderAssessment();
   async function tick() {

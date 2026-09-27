@@ -1,6 +1,7 @@
 """Dashboard verdicts and loopback API must distinguish evidence from claims."""
 
 import json
+import os
 import threading
 from urllib.error import HTTPError
 from urllib.parse import quote
@@ -8,8 +9,25 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from benchos.dashboard import DashboardServer, DashboardState, IMU_LINE, diagnose, read_imu_report
+from benchos.dashboard import (
+    DashboardServer, DashboardState, IMU_LINE, diagnose, load_env_file, read_imu_report)
 from benchos.protocol import BenchError
+
+
+def test_env_file_fills_gaps_without_overriding_the_shell(tmp_path, monkeypatch):
+    path = tmp_path / ".env"
+    path.write_text("# comment\n\nexport GEMINI_API_KEY='from-file'\n"
+                    "BENCHY_PUBLIC_BASE_URL = \"http://192.168.1.50:8765\"\n"
+                    "BENCHY_BIND_HOST=0.0.0.0\nnot an assignment\n", encoding="utf-8-sig")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("BENCHY_PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setenv("BENCHY_BIND_HOST", "127.0.0.1")
+    loaded = load_env_file(path)
+    assert loaded == ["GEMINI_API_KEY", "BENCHY_PUBLIC_BASE_URL"]
+    assert os.environ["GEMINI_API_KEY"] == "from-file"
+    assert os.environ["BENCHY_PUBLIC_BASE_URL"] == "http://192.168.1.50:8765"
+    assert os.environ["BENCHY_BIND_HOST"] == "127.0.0.1"
+    assert load_env_file(tmp_path / "absent.env") == []
 
 
 def test_light_disagreement_uses_physical_reading():
