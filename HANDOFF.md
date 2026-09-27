@@ -1,5 +1,22 @@
 # Benchy handoff
 
+## Current filming direction: hook → context → conversational repair
+
+- User reworked the video around an existing humorous LED/explosion intro,
+  then a short overview covering who/what/why/scope, followed by one example
+  repair. **DEMO_4_PEOPLE.md** now has the full story-led 3–4 minute edited
+  script and exact crew actions; **LIVE_DEMO_SCRIPT.md** points to it.
+- Demonstrate describing the parcel monitor, attaching a real circuit photo,
+  chat/Grok voice interaction, independent probes, firmware repair, approved
+  website flashing, and measured verification. Keep technical detail in the
+  crew notes; do not narrate every dashboard panel.
+- Correct architecture wording: Gemini Robotics ER supplies photo descriptions,
+  Grok powers voice, Codex investigates code and uses physical tools. The human
+  corrects wiring and approves upload. Photos do not prove electrical facts.
+- This update changes documents only. No wiring, firmware, runtime settings,
+  or measurement state was changed. Real circuit-photo attachment and the new
+  website's actual repair-upload path remain rehearsal items noted below.
+
 ## Current: UI-only four-person demo and voice polish (2026-09-26 late)
 
 - Canonical script: **DEMO_4_PEOPLE.md**. All software interaction stays in

@@ -18,7 +18,8 @@ Codex --Arduino CLI/USB---------------------------> ESP32-C6 --> servo signal
 
 ## Current quick demo: ParcelGuard
 
-For the video crew: [what wiring to break and how to restore it](DEMO_BREAK_GUIDE.md).
+For the video crew: [four-person story and filming script](DEMO_4_PEOPLE.md),
+plus [what wiring to break and how to restore it](DEMO_BREAK_GUIDE.md).
 
 For the clean three-signal build, use [PARCEL_GUARD_SETUP.md](PARCEL_GUARD_SETUP.md)
 and [PARCEL_GUARD_DEMO.md](PARCEL_GUARD_DEMO.md). It combines light intrusion,

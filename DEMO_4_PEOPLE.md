@@ -1,245 +1,280 @@
-# Benchy — four-person live demo
+# Benchy — story-led, four-person demo video
 
-**Aim for 4–6 minutes, with extra room for the AI response and firmware build.**
-All software actions happen in the website. No terminal or separate Codex
-window is needed; Person 2 handles the two physical jumper corrections.
-This is a disclosed two-fault exercise: one physical sensor-wire swap and one
-firmware timing bug. Measurements, code correction, upload, and remeasurement
-are real. Do not announce a result until fresh evidence supports it.
+**Target: 3–4 minutes edited.** Allow extra time when recording for real AI
+responses and firmware builds. The story is: **a familiar hardware disaster →
+meet Benchy → describe a broken project → investigate together → fix → prove it.**
+All software actions stay in the website. Keep technical details in the crew
+notes below; the spoken demo should sound like someone asking for help.
 
-## Roles
+## Cast
 
-| Person | Role | Hands-on job |
-| --- | --- | --- |
-| 1 — Story | The ECE student / TA problem and opening | Introduce the problem; keep the story moving during waits. |
-| 2 — Hardware | Explain the two boards and handle wiring | Keep sensors steady; restore the two C6 input jumpers. |
-| 3 — Investigator | Drive the website and ask Benchy | Type prompts, show source/diff, run the confirmed upload. |
-| 4 — Verifier | Explain independent evidence and close | Save captures, show serial/tap comparisons, verify the repair. |
+| Person | Job |
+| --- | --- |
+| 1 — Builder | LED/explosion hook, introduce Benchy, closing line. |
+| 2 — Student / TA | Explain the problem and example project; handle the wire repair. |
+| 3 — Operator | Add photos, talk/type to Benchy, review and upload the code change. |
+| 4 — Narrator / verifier | Explain what Benchy is doing and show that the repair works. |
 
-## Before recording — do this off camera
+The actual ECE 4180 TA should deliver the TA sentence. Otherwise say “One of
+our teammates is an ECE 4180 TA.”
 
-1. Open `http://127.0.0.1:8765/` on the laptop. **Preview off**, **Live on**,
-   correct S3 and C6 selected. Keep both USB cables connected.
-2. Software fault: `dut_examples/parcel_guard/config.h` must set
-   `PARCEL_GUARD_FAULT 3`, and the C6 must actually be running that build.
-   The latest verified setup already does. Local source alone is not proof:
-   Benchy measured the alarm at **10 Hz**; healthy target is **2 Hz**.
-3. **Current setup: the inputs are already swapped and both faults are measured.
-   Leave the wires as they are for filming.** To recreate this setup later: uncover the photoresistor; dry the water sensor.
-   Unplug **both USB cables**. At the **C6 board only**, swap the jumper ends
-   in **IO1 and IO2**: photoresistor to **IO2**, water sensor **S to IO1**.
-   Leave all yellow/blue/orange S3 wires, resistors, grounds, and LED wiring
-   exactly as they are. Reconnect USB and wait at least five seconds.
-4. In **Debug with Benchy**, use the diagnosis prompt below. Confirm it has
-   fresh evidence for the reversed sensor readings **and** wrong alarm rate.
-   If one is absent, resolve that before saying there are two faults.
-5. A website capture named **`01 Both faults verified`** is already saved
-   (22:43 local: P1 2.337 V, P2 0 V, D3 20 transitions/s). For a new recording,
-   in **Saved captures**, name a fresh capture `01 Both faults verified` and
-   click **Save new capture ↗**. Wait for success. Do not replace fresh
-   evidence with an old capture during filming.
-6. Voice has been checked in this browser. In a noisy room, click **Mute
-   microphone** after your question while Benchy investigates and reads back
-   the result. Click **Unmute microphone** for a follow-up. Typed chat is the
-   fallback. Stop voice before switching to typed prompts; otherwise
-   typed messages route through the voice conversation. Keep `.env` and keys
-   off screen. Use a wide browser view so tables and code fit.
+## 1. Project overview / intro — about 45–55 seconds
 
-## 1. Opening — Person 1 (about 30 seconds)
+### Hook — Person 1, about 8 seconds
 
-**Screen:** Top of the workspace, hardware connections and Assessment.
+**Picture:** Use the existing clip of someone connecting an LED, followed by
+the exaggerated explosion edit. The explosion is a visual/sound effect.
 
-> “We're ECE students. We've all spent hours staring into a forest of jumper
-> wires, trying to work out whether a bug lives in our code or our circuit.
-> As an ECE 4180 TA, I see how much time that takes from helping students.
-> Benchy gives an AI debugging agent physical measurements alongside the
-> firmware and serial output. Today, we've deliberately planted one wiring
-> mistake and one software bug. Let's find both and prove the repairs.”
+> “It's one LED. How hard could it be?”
 
-The actual TA should speak that sentence; otherwise say “One of our teammates
-is an ECE 4180 TA.”
+**Explosion. Beat. Cut to the builder looking at the laptop.**
 
-## 2. What is being measured — Person 2 (about 35 seconds)
+> “Maybe it's the code.”
 
-**Physical:** Point to the C6, S3, photoresistor, water sensor, and LED.
-**Clicks:** Show the pin-coverage table, then **Probes**.
+**Title card: BENCHY.**
 
-> “This is a parcel monitor: light means the lid is open, water means a leak,
-> and the LED signals an alert. The C6 runs the project. The separate S3
-> measures its signals through permanent input probes. Yellow follows light,
-> blue follows water, and orange follows the alarm output. We can inspect
-> those signals without moving the probes between tests.”
+### The problem — Person 2, about 20 seconds
 
-Keep the light uncovered and water dry through diagnosis. Explain that the
-coverage table is a wiring declaration, not automatic wire recognition.
+**Picture:** A real breadboard, tangled jumpers, code on a laptop, someone
+following a wire with their finger.
 
-## 3. Let the agent investigate — Person 3 (about 45–75 seconds)
+> “We're ECE students. We've spent hours tracing jumper wires, checking
+> connections, and changing code—just to figure out where a problem starts.
+> As an ECE 4180 TA, I see students lose that same time. If I could diagnose
+> their circuits faster, I could help a lot more of them.”
 
-**Click:** **Debug with Benchy**. Paste and send:
+### What Benchy does — Person 1, about 20 seconds
 
-```text
-This parcel monitor should alert when the lid is open or water is detected,
-with a 2 Hz LED blink. Its behavior is wrong. The S3 sensor-side taps and alarm
-tap have stayed in place. Read the declared harness, take fresh independent
-measurements, compare both sensor voltages with the C6 reports, and measure
-the alarm frequency over 2000 ms. Inspect the source and report every
-independent issue with its evidence. Do not edit or flash anything yet.
-```
+**Picture:** Benchy beside the project; close-up of its probe connections;
+then the website with real readings.
 
-> “We give it the intended behavior and a way to measure. It compares what
-> the controller reports against a separate instrument, then checks the
-> relevant code. We'll fix the problems one at a time so neither can hide
-> the other.”
+> “Meet Benchy: an AI debugging partner connected to your circuit. Tell it
+> what you're building, show it the board, and connect probes to the signals
+> you want checked. Benchy can measure those signals, investigate the code,
+> and help you get the project working. Our prototype focuses on low-voltage
+> breadboard projects like this one.”
 
-**While it works:** Visit **Serial monitor** and point to `light_mv` and
-`water_mv`. Return to chat for the measured explanation. If using voice, speak
-an equivalent request and wait for its investigation to finish.
+**On-screen line:** “Describe → Measure → Repair → Verify”
 
-## 4. Show both failures — Person 4 (about 40 seconds)
+This establishes who it serves, the debugging problem, why it matters, what
+it does, and the prototype's scope before the example begins.
 
-**Clicks:** **Probes → Serial monitor → Signal taps → Source**.
+## 2. Example demo — about 2–2½ minutes, with waits trimmed
 
-> “The real light signal and water signal don't match their reported sensor
-> names. That is evidence for the input wiring problem. Separately, the alarm
-> is switching at ten cycles per second when it should be two.”
+### A. Describe the project and add a photo — Persons 2 and 3
 
-- Use **actual live numbers**; ambient light changes. Dry water is normally
-  near zero. With the input swap, the high light voltage appears under the
-  water report. One sensor swap is one wiring mistake.
-- D3 counts **both edges**: roughly **40 transitions in 2 seconds = 20/s**,
-  which corresponds to **10 full cycles/s**. Healthy: roughly **8 in 2 s**.
-- **Source:** choose `dut_examples/parcel_guard/config.h`. Show the correct
-  IO1/IO2 assignments and the explicit `SOFTWARE BUG DEMO` comment.
-  The sketch's timing line explains 50 ms versus 250 ms per half-cycle.
-- **Investigation** keeps the evidence/next-check/timeline. The main headline
-  may show just one failing check; read the separate taps and chat results.
+**Picture:** The parcel monitor and its rapidly blinking LED. Show the water
+sensor is dry. Keep the light sensor uncovered throughout the investigation.
 
-## 5. Repair only the wiring — Person 2 (about 30–45 seconds)
+**Person 2:**
 
-**Physical sequence:**
+> “This is a parcel monitor. It should alert us if the box opens or water
+> gets in. Right now it's reporting a leak even though the sensor is dry,
+> and the alarm is blinking too fast. We've planted one wiring mistake and
+> one software bug. Let's ask Benchy to find them.”
 
-1. Unplug **both USB cables**.
-2. At the C6, put the **photoresistor jumper back into IO1**.
-3. Put the **water sensor S jumper back into IO2**.
-4. Leave every S3 probe/resistor and the LED connection untouched.
-5. Reconnect both USB cables. Keep light uncovered and water dry; wait five
-   seconds. Click **Refresh ports and source** if a port changed.
-
-Person 3 sends:
+**UI:** Open **Debug with Benchy → Add photos / use camera**. Choose a clear
+photo of the current board, with a second close-up if needed. Show the image
+thumbnail. Paste this description and click **Send to Benchy ↗**:
 
 ```text
-I restored photoresistor to C6 IO1 and water sensor S to C6 IO2. Both boards
-are powered again; the S3 taps are unchanged. Remeasure both sensor comparisons
-and the alarm frequency. Do not edit or flash yet.
+This is our parcel monitor. The light sensor detects an open lid, the water
+sensor detects a leak, and the LED should blink twice per second whenever
+either happens. The water sensor is dry and the light sensor is uncovered,
+but it reports a leak and the LED flashes too fast. I've attached the board
+photo. The probes are connected as recorded in the workspace, at the sensor
+signals and alarm output. Use fresh measurements and the code to find what's
+wrong. Explain it simply, and don't change anything yet.
 ```
 
-Person 4 saves **`02 Wiring repaired`** in Saved captures.
+**Person 4, over the upload / investigation:**
 
-> “Now the sensor readings agree, but the alarm timing still fails. Correcting
-> the wiring hasn't hidden the software bug.”
+> “We describe the project in normal language and add photos for context.
+> Gemini Robotics ER describes what's visible in those photos. Benchy's
+> probes supply the electrical measurements, and Codex uses that evidence
+> alongside the firmware to investigate.”
 
-Only say this after measurements establish both parts.
+**Optional shot:** Use **Visual → Start phone photo link** and scan the QR to
+send the photo from a phone. Choose this route only after rehearsing that
+phone on the actual Wi-Fi; direct image attachment is the shorter sequence.
+Use an image of the real current setup.
 
-## 6. Repair firmware from the website — Person 3 (about 45–90 seconds)
+### B. Have a conversation — Person 3
 
-**Click:** **Debug with Benchy**. Send:
+**UI:** After the first answer finishes, click **Start voice conversation**.
+Allow the microphone if prompted. Ask:
 
-```text
-Prepare the smallest firmware correction for the remaining timing fault.
-Set PARCEL_GUARD_FAULT to 0 in dut_examples/parcel_guard/config.h, keeping the
-correct pin assignments. Explain the change and leave it ready for my review.
-Do not upload firmware; I will use Build & flash.
-```
+> “Can you check the sensor signals and the alarm, and tell me what I should
+> fix first?”
 
-1. Expand **Review local code changes**; click **Refresh diff**. Show `3 → 0`.
-2. In **Source**, choose `config.h` and click **Refresh** if needed.
-3. Back in chat, click **Build & flash…**. Check the target says **ESP32-C6**
-   via its `esp32c6` board profile, sketch `dut_examples/parcel_guard`, and
-   enrolled DUT identity. It must not be the S3.
-4. Confirm the restored wiring matches the declaration, check the review box,
-   type **`FLASH`**, and click **Build and upload firmware**.
-5. Wait for the result. Click **Ask Benchy to review the result ↗**. Ask:
+**Person 4:**
 
-```text
-Verify the repair now using fresh S3 measurements: compare both sensor inputs
-with the DUT reports and measure the alarm frequency over 2000 ms. An upload
-message is not proof. Report anything that still fails.
-```
+> “You can type to Benchy or talk it through. Grok powers the voice
+> conversation, while the debugging agent checks the project and takes
+> measurements through the probes.”
 
-**Person 1 fills build time:**
+**Picture:** Let the actual response play. Briefly cut to **Probes** and
+**Signal taps** while it works, then return to the conversation. Use the real
+answer; do not script a fabricated model response.
 
-> “The agent can prepare a correction, and the operator reviews the change
-> and upload target. The interesting part is what comes next: we measure
-> again, because a successful upload doesn't prove the circuit works.”
+**Person 4, only after the findings are established:**
 
-## 7. Prove it and close — Person 4 (about 40 seconds)
+> “It found two separate problems: the sensor inputs are swapped, and the
+> firmware is driving the alarm too fast.”
 
-**Clicks:** **Signal taps → Saved captures**.
+The audience only needs the meaning. “Ten blinks a second instead of two” is
+plenty; don't narrate GPIO numbers, edge counts, or ADC details.
 
-1. Confirm fresh **2 Hz** measurement, matching sensor reports, and about
-   **8 transitions / 2 seconds** on D3 while the alert is active.
-2. Save **`03 Both repaired`**.
-3. Select **Before: `01 Both faults verified`**, **After: `03 Both repaired`**.
-4. Show D3 changing **20 transitions/s → 4 transitions/s**. Expand
-   **Device output saved with these captures** to show corrected reports.
-   Use `02 Wiring repaired` to explain the intermediate state if useful.
+### C. Correct the wiring — Person 2
 
-> “One wiring mistake, one firmware bug, and independent measurements showing
-> both repairs. Benchy brings the agent's code understanding to the signals
-> on the bench—so a student or TA can spend less time guessing and more time
-> building.”
+**Picture:** A short close-up of Person 2 unplugging power, restoring the two
+sensor jumpers at the project board, then reconnecting. Exact order is in the
+crew notes below. The colored Benchy probes stay attached.
 
-**Optional physical ending:** With water still dry, cover the photoresistor
-fully with an opaque object. The LED should stop. Uncover it; it should resume
-at 2 Hz. Only add this after the main verification passes.
+**Person 2:**
 
-## Optional photo moment — 15–30 seconds
+> “Benchy tells us which connections to correct. We move the two sensor
+> wires; the probes stay in place.”
 
-Use **Visual → Start phone photo link**, scan the QR from the same Wi-Fi, and
-send a clear board photo. Ask a question in chat to include it. Gemini makes a
-visual description for Codex; the probes establish electrical facts. The
-phone session expires after ten minutes. Test actual phone Wi-Fi access before
-filming. Skip this segment if it interrupts the main story.
+**Person 3, through voice or chat:**
 
-## Recovery cues
+> “I've corrected the sensor connections. Check them again, and see whether
+> the alarm still needs fixing. Don't change the code yet.”
 
-- **Room conversation interrupts voice:** click **Mute microphone**. You can
-  still type into the voice conversation and hear its answer. Benchy also
-  pauses microphone input during tool work and the measured readback.
-- **Voice stalls:** stop voice and use the typed prompts above.
-- **A port disappears:** reseat its data cable, then refresh ports. Never flash
-  a guessed device. Pause narration until both selected identities are right.
-- **Reading says stale/unverified:** hold light/water steady, keep serial
-  running, and sample again. This is not a passing result.
-- **No timing fault:** check live frequency and actual firmware before setup;
-  fault 3 may already have been repaired. Do not seed it mid-demo silently.
-- **Upload fails:** inspect the result; don't repeatedly click upload. Source
-  state and running firmware can differ until upload and remeasurement pass.
-- **Past captures:** `02 Inputs swapped`/`03 Inputs repaired` and
-  `04 Timing fault`/`05 Timing repaired` are recorded separate rehearsals.
-  Clearly label them as past evidence if used as fallback.
-- **P3 voltage jumps between high and low:** normal snapshot phase for a
-  blinking signal. Compare frequency/edge rate instead.
+**Picture:** Real follow-up result; the false leak is gone, but the LED still
+blinks too quickly. Save the intermediate capture if useful for the edit.
 
-## Ready check
+### D. Let Benchy repair the firmware — Persons 3 and 4
 
-- [x] Updated website and typed Codex → MCP → real S3 measurements verified.
-- [x] Live sensor comparisons, serial, source, and saved captures working.
-- [x] Deliberate 10 Hz fault measured; fresh preflight capture saved.
-- [x] Flash target review resolves the enrolled C6; prior upload path rehearsed.
-- [x] xAI session token and Gemini image-description API verified.
-- [x] User exercised microphone/audio. Final website voice → Codex → physical
-  tools → spoken response checked with microphone muted and a typed question;
-  it reported both swapped inputs and the approximately 10 Hz alarm. Readable
-  transcript, caption coalescing, mute control, and stop control verified.
-- [ ] Actual phone upload checked, if included in the video.
-- [x] Both faults measured together after the physical input swap and reseating.
-  Saved `Reseated input swap — combined rehearsal`: light 2.299 V vs reported
-  ~0.002 V; dry water 0 V vs reported ~2.340 V; D3 40 transitions / 2 s.
-- [ ] End-to-end repair through the new website flash dialog rehearsed.
+**Person 3, through voice or chat:**
 
-The unchecked items still need a human rehearsal if included. The new flash
-dialog and its target/confirmation handling were checked, but a real upload
-through that dialog was not repeated in this session; the deliberately faulty
-firmware and swapped inputs remain ready for filming. The underlying upload
-and repaired 2 Hz circuit were verified in earlier individual rehearsals.
+> “Fix the firmware so the alarm blinks twice per second. Keep the sensor
+> connections unchanged, and show me the code change before uploading.”
+
+**UI:** Stop voice after the response so filming doesn't capture room chatter.
+Open **Review local code changes → Refresh diff**. Briefly show the change
+and the clearly labeled demo bug in **Source**. Return to **Build & flash…**,
+review the project board, check the wiring confirmation, type **FLASH**, and
+click **Build and upload firmware**.
+
+**Person 4:**
+
+> “Benchy prepares the firmware fix. We review it and approve the upload,
+> and it builds and flashes the project board from the same website.”
+
+**Picture:** Actual upload progress and result. Trim the wait with a visible
+“Build and upload — sped up” label if needed. During the wait, a quick cut to
+**Serial monitor** can show that the device's own reports are also available.
+
+### E. Verify the repair — Persons 3 and 4
+
+**UI:** Click **Ask Benchy to review the result ↗**. Ask:
+
+> “Check the real circuit again. Do the sensor readings agree now, and is
+> the alarm blinking twice per second?”
+
+**Picture:** Actual measured response, visibly slower LED, then
+**Saved captures** showing the before/after evidence.
+
+**Person 4, after fresh verification passes:**
+
+> “The sensor reports now match the measurements, and the alarm is back to
+> two blinks a second. Benchy checked the physical result after the upload.”
+
+**Physical payoff:** With the water sensor dry, cover the light sensor with
+an opaque object. The LED stops. Uncover it; the slower blink returns.
+Keep this shot if it behaves as verified.
+
+## 3. Closing — Persons 2 and 1, about 15 seconds
+
+**Person 2:**
+
+> “For students, that's less time lost tracing wires. For a TA, it means
+> getting to the next student sooner.”
+
+**Person 1:**
+
+> “Benchy: an AI debugging partner that can measure what it's trying to fix.”
+
+**End card:** BENCHY · Describe. Measure. Repair. Verify.
+
+---
+
+## Crew notes — do not read these aloud
+
+### Current starting state
+
+At the last verified rehearsal, both faults were already in place:
+
+- The photoresistor goes to **C6 IO2**, and water **S goes to C6 IO1**.
+- The source and running C6 use `PARCEL_GUARD_FAULT 3`: an intentional
+  10 Hz timing fault. Healthy behavior is 2 Hz.
+- Keep yellow/blue/orange S3 probes, their resistors, grounds, and LED wiring
+  untouched. Leave light uncovered and water dry to expose both faults.
+- Last saved baseline: **01 Both faults verified**, September 26 at 22:43
+  local; light 2.337 V, water 0 V, alarm 20 transitions/s (10 full cycles/s).
+  This is historical evidence. Take a new capture for each actual recording.
+
+### Exact physical repair during scene C
+
+1. Unplug **both ESP32 USB cables**.
+2. At the **C6 board only**, put the **photoresistor signal jumper into IO1**.
+3. Put the **water sensor S jumper into IO2**.
+4. Leave all S3 probe branches and the LED connection in place.
+5. Reconnect both USB cables. Keep light uncovered and water dry. Wait five
+   seconds, then refresh the website's ports if necessary.
+
+The person fixes the physical wires. Benchy diagnoses and guides that action;
+it cannot physically move a jumper.
+
+### Firmware and upload specifics for the operator
+
+- The intended small demo repair is `PARCEL_GUARD_FAULT 3 → 0` in
+  `dut_examples/parcel_guard/config.h`, preserving LIGHT_GPIO 1,
+  WATER_GPIO 2, and ALERT_LED_GPIO 20. The code explicitly labels this as a
+  seeded demonstration bug. Do not hide that if the code appears on screen.
+- Review **Source** and **Review local code changes** before the upload.
+- The flash target must be the enrolled **ESP32-C6**, profile containing
+  `esp32c6`, sketch `dut_examples/parcel_guard`; never the S3 instrument.
+- The dialog requires a reviewed wiring declaration and typed `FLASH`.
+  Scene C restores the real wiring to that declaration before this step.
+- Flashing success alone does not establish repair. Ask for fresh sensor
+  comparisons and a 2000 ms alarm-frequency measurement afterward.
+- Dry water should report near zero. Light varies with the room.
+  Healthy alarm: about 2 Hz or 8 digital transitions in two seconds.
+
+### Before/after captures and screen coverage
+
+Save **01 Both faults verified**, **02 Wiring repaired**, and
+**03 Both repaired** at the corresponding stages. In **Saved captures**, select
+01 as Before and 03 as After. Expand **Device output saved with these captures**
+if useful. Use actual readings; don't use an old healthy capture as the live
+result of this recording.
+
+The story naturally covers the main UI: Visual/attachments, chat, voice,
+probes, signal taps, source/diff, upload, and saved evidence. Show Assessment
+and pin coverage in the opening workspace shot. Use Serial monitor and the
+Investigation evidence as short supporting shots during real waits. No need
+to explain every panel.
+
+### Recording checks and honest product wording
+
+- **Preview off; real boards selected; Live on.** Keep the browser wide and
+  `.env`/credentials out of frame. Don't change wiring with power connected.
+- Voice and real measurement delegation were verified. In a noisy room,
+  **Mute microphone** while the answer plays; **Unmute microphone** for the
+  next question. Stop voice to return typed messages directly to Codex.
+- Gemini image description worked in an API check; the actual circuit-photo
+  upload path still needs rehearsal with the chosen picture. A photo gives
+  visual context, not proof of continuity, voltage, or an exhaustive schematic.
+- Call it **Gemini Robotics ER for visual context**, not a custom model trained
+  specifically on our circuit. Grok provides voice; typed debugging normally
+  goes to Codex. A typed message during a live voice session goes through that
+  voice conversation.
+- The latest website flash dialog's target and confirmation handling were
+  checked. A real repair upload through that new dialog still needs rehearsal.
+  Earlier uploads and the individually repaired 2 Hz circuit were verified.
+- Cut waiting time, with a label when speeding up. Keep the actual answers,
+  failures, approval, and successful measurements from this run.
+- If a check fails, keep investigating before filming a success claim. The
+  goal is a clear real repair, not a promise that Benchy can debug every circuit.
