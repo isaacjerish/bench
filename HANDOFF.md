@@ -1,6 +1,28 @@
 # Benchy handoff
 
-## Latest: color rewire and both demo rehearsals pass (2026-09-26 evening)
+## Active: combined-fault exercise (2026-09-26 evening)
+
+User now requests two errors present together, without a UI walkthrough.
+Loaded intentional fault 3 onto the enrolled C6; compile, upload verification,
+and postflash telemetry check passed. S3 independently measured **10.000 Hz**
+(20 rising edges / 2001 ms) before the wiring change. Local
+`dut_examples/parcel_guard/config.h` currently sets `PARCEL_GUARD_FAULT 3`;
+this is intentional exercise state, not a finished healthy configuration.
+Evidence: `validation_runs/2026-09-26-combined-fault-upload.json` and
+`2026-09-26-combined-prewire-frequency.json`.
+
+Asked user to dry water/uncover light, unplug both USB cables, swap ONLY C6
+IO1/IO2 input jumper ends, leave all S3 color branches/resistors/LED intact,
+and reconnect. Await **“both faults ready.”** Capture both sensor/report
+mismatches and alarm timing **before fixing either**. Do not stop diagnosis
+after the first failed comparison. Then guide the physical input repair,
+restore fault 0 and reflash, and remeasure every declared check. Both faults
+were verified individually in the previous rehearsal; the combined setup
+has not yet been measured. Do not claim unknown-fault discovery: this is a
+disclosed, seeded test. Current port identities remain in the next section;
+rediscover after reconnection.
+
+## Previous: color rewire and both separate demo rehearsals pass (2026-09-26 evening)
 
 - User wants one or two common/subtle seeded faults and a polished UI
   walkthrough. `DEMO_VIDEO_WALKTHROUGH.md` selects swapped C6 sensor inputs
