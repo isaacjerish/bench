@@ -56,3 +56,35 @@ def test_photo_context_describes_all_images_without_diagnosis_schema():
     answer = GeminiRestProvider('test-key', 'test-model', succeed).describe_images([
         (b'photo1', 'image/jpeg'), (b'photo2', 'image/png')])
     assert 'pin labels are uncertain' in answer
+
+
+def test_web_flash_confirmation_and_upload_failure_remain_separate(monkeypatch):
+    import threading
+    from urllib.request import Request, urlopen
+    from benchos.dashboard import DashboardServer, DashboardState
+    calls=[]
+    def fake_build(*, flash):
+        calls.append(flash)
+        return {'compile': {'ok': True}, 'upload': {'ok': False}, 'postflash': None}
+    monkeypatch.setattr('benchos.flash.build_dut_firmware',fake_build)
+    state=DashboardState()
+    server=DashboardServer(('127.0.0.1',0),state)
+    worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
+    base=f'http://127.0.0.1:{server.server_address[1]}'
+    def request(payload,origin=base):
+        return urlopen(Request(base+'/api/agent/flash',data=json.dumps(payload).encode(),
+            headers={'Content-Type':'application/json','X-Benchy-Local':'1','Origin':origin}),timeout=5)
+    try:
+        for payload,origin,expected in [({},base,400),
+            ({'confirmation':'FLASH_DECLARED_DUT','wiring_confirmed':False},base,400),
+            ({'confirmation':'FLASH_DECLARED_DUT','wiring_confirmed':True},'http://other.invalid',403)]:
+            with pytest.raises(HTTPError) as error: request(payload,origin)
+            assert error.value.code==expected
+        assert calls==[]
+        with pytest.raises(HTTPError) as failure:
+            request({'confirmation':'FLASH_DECLARED_DUT','wiring_confirmed':True})
+        assert failure.value.code==409
+        assert json.load(failure.value)['ok'] is False
+        assert calls==[True]
+    finally:
+        server.shutdown();server.server_close();state.close();worker.join(timeout=2)

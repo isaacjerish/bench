@@ -1,19 +1,21 @@
 # Benchy live pitch — one wiring error, one software error
 
+**For the four-person, UI-only version, use [DEMO_4_PEOPLE.md](DEMO_4_PEOPLE.md).**
+
 **Plan for 3–5 minutes, including upload time.** The faults are deliberately
 seeded and labeled in source; every measurement and repair is real.
 
 ## Before the audience arrives
 
-- Latest merged-dashboard preflight: timing fault 3 is loaded and measured
-  at 10 Hz. Light/water reports agree with the probes: **the wiring swap is
-  not currently evidenced**. Each fault and repair was rehearsed separately.
-- For the combined setup: light uncovered, water dry. Unplug both USB cables;
+- Both faults are now confirmed together after reseating the swapped C6
+  inputs: S3 light 2.299 V / water 0 V; C6 light ~0.002 V / water ~2.340 V;
+  D3 40 transitions in 2 seconds. The existing wiring is ready for filming.
+- To recreate the combined setup later: light uncovered, water dry. Unplug both USB cables;
   swap only the C6 IO1/IO2 jumper ends (light to IO2, water S to IO1). Leave
   every colored S3 branch, resistor, and the LED wiring in place. Reconnect.
   Have the agent capture both mismatches and the timing fault before filming.
 - Expand the browser panel. Preview off, Live on, correct S3/C6 selected.
-  Keep conditions steady for fresh readings. Start on **Design map**.
+  Keep conditions steady for fresh readings. Start on **Assessment + pin coverage**.
 - The headline shows one issue at a time; **Signal taps** can show another
   failing check at the same time. Do not promise a two-item issue dashboard.
 
@@ -31,7 +33,7 @@ Say this after the two-fault setup has actually been confirmed.
 
 | Where to go | What to do / say |
 | --- | --- |
-| **Design map + coverage + Assessment** | Point to S3 as the measuring board and C6 as the project. “These three permanent probe connections cover the signals this project uses. This is our declared wiring map; Benchy checks the signals at those connections.” |
+| **Hardware connections + pin coverage + Assessment** | Point to S3 as the measuring board and C6 as the project. “These three permanent probe connections cover the signals this project uses. The coverage table names the declared connections; Benchy checks the signals there.” |
 | **Probes** | Show light voltage and dry-water voltage. “These values come from the independent S3 measurements.” Briefly point to the trends; hold the light steady during diagnosis. |
 | **Serial monitor** | Show `light_mv`, `water_mv`, and raw output; optionally filter `PARCEL`. “This is what the controller says it sees. Compare that with the measurements: the light and water reports are reversed.” Use the actual values currently on screen. |
 | **Signal taps** | Show D3 and the failing rate. “There's a second problem: 40 transitions in two seconds. That's ten full blinks per second; we intended two.” Ask the agent for its separate frequency measurement. |

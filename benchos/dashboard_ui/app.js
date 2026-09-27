@@ -8,8 +8,9 @@ let captureBusy = false;
 let serialSeq = 0, serialEvents = [], session = [];
 let agentConfigured = false;
 const agentState = {threadId:null, messages:[], active:false, aborter:null, recognition:null, voiceTurn:false};
+const voiceTranscript = new window.BenchyVoiceTranscript();
 const agentFlash = {plan:null, ready:false, running:false, lastResult:null};
-const voice = {active:false, ready:false, responseActive:false, socket:null, stream:null, audio:null, source:null, processor:null, mute:null, playbackAt:0, playbackTimer:null, players:new Set(), pendingTools:[], toolRun:false, userDraft:null, assistantDraft:null, aborter:null, generation:0, audioQueue:[], tools:[]};
+const voice = {micMuted:false, awaitingToolReply:false, active:false, ready:false, responseActive:false, socket:null, stream:null, audio:null, source:null, processor:null, mute:null, playbackAt:0, playbackTimer:null, players:new Set(), pendingTools:[], toolRun:false, userDraft:null, assistantDraft:null, aborter:null, generation:0, audioQueue:[], tools:[]};
 try {
   const savedAgent = JSON.parse(localStorage.getItem('benchy-codex-chat-v1') || '{}');
   agentState.threadId = typeof savedAgent.threadId === 'string' ? savedAgent.threadId : null;
@@ -109,13 +110,9 @@ function renderFreshness() {
 function renderHarness() {
   if (!harness) return;
   const board = harness.dut && harness.dut.board ? harness.dut.board : 'DUT';
-  setText('board-dut', compactNet(board));
   setText('dut-port-label', board);
-  setText('harness-state', 'USER DECLARED · ' + (harness.declared_on || 'DATE UNKNOWN'));
   for (const name of names) {
     const item = harness.probes[name], key = name.toLowerCase();
-    setText('board-' + key + '-net', compactNet(item.state === 'connected' ? item.net : item.state.toUpperCase()));
-    setText('legend-' + key, (item.net || 'UNASSIGNED') + ' · ' + item.state.replaceAll('_', ' '));
     setText('probe-' + key + '-net', item.net || 'UNASSIGNED');
     setText('probe-' + key + '-state', item.state.replaceAll('_', ' ').toUpperCase() + ' · USER DECLARED');
     const range = item.expected_min_v == null ? 'NO TARGET RANGE' : Number(item.expected_min_v).toFixed(2) + '–' + Number(item.expected_max_v).toFixed(2) + ' V TARGET';
@@ -143,7 +140,7 @@ async function loadHarness() {
     if (!response.ok) throw Error(data.error || 'Harness unavailable');
     if (harness && JSON.stringify(harness) !== JSON.stringify(data)) { resetProbeDisplay(); renderBus(null); }
     harness = data; renderHarness();
-  } catch (error) { setText('harness-state', 'Harness unavailable: ' + error.message); }
+  } catch (error) { setText('coverage-description', 'Harness unavailable: ' + error.message); }
 }
 async function loadPorts() {
   try {
@@ -842,24 +839,32 @@ function startAgentDictation() {
   };
   recognition.start();
 }
+function syncVoiceMicrophone() {
+  const enabled = !voice.micMuted && !voice.toolRun && !voice.awaitingToolReply;
+  if (voice.stream) for (const track of voice.stream.getAudioTracks()) track.enabled = enabled;
+  el('agent-mic-mute').setAttribute('aria-pressed', String(voice.micMuted));
+  setText('agent-mic-mute', voice.micMuted ? 'Unmute microphone' : 'Mute microphone');
+}
+function toggleVoiceMicrophone() {
+  voice.micMuted = !voice.micMuted;
+  if (voice.micMuted && voice.ready) sendVoiceEvent({type:'input_audio_buffer.clear'});
+  syncVoiceMicrophone();
+}
 function voiceState(state, message) {
   el('agent-voice-panel').dataset.state = state;
   setText('agent-voice-status', message);
 }
-function renderVoiceTurn(role, text, draft = false) {
-  let row = draft ? (role === 'user' ? voice.userDraft : voice.assistantDraft) : null;
-  if (!row) {
-    row = {role, text:'', source:'grok'};
-    agentState.messages.push(row);
-    if (draft) {
-      if (role === 'user') voice.userDraft = row;
-      else voice.assistantDraft = row;
-    }
-  }
-  row.text = text;
+function renderVoiceTurn(role, text, draft = false, itemId = null) {
+  const row = draft ? voiceTranscript.update(agentState.messages, role, text, itemId) :
+    {role, text, source:'grok'};
+  if (!row) return;
+  if (!draft) agentState.messages.push(row);
+  else if (role === 'user') voice.userDraft = row;
+  else voice.assistantDraft = row;
   renderAgentChat();
 }
 function finishVoiceDraft(role) {
+  voiceTranscript.begin(role);
   if (role === 'user') voice.userDraft = null;
   else voice.assistantDraft = null;
 }
@@ -904,6 +909,7 @@ function interruptVoice() {
   if (!voice.active) return;
   if (voice.responseActive) sendVoiceEvent({type:'response.cancel'});
   voice.responseActive = false;
+  voice.awaitingToolReply = false; syncVoiceMicrophone();
   finishVoiceDraft('assistant');
   stopVoicePlayback();
   updateVoiceInterrupt();
@@ -953,8 +959,10 @@ async function askCodexFromVoice(args) {
     'User problem: ' + problem,
     'Conversation context and what has already been tried: ' + (context || 'None supplied.'),
     'Requested investigation: ' + investigation,
+    'Current dashboard context (may be stale; take fresh measurements for explicit test requests): ' + JSON.stringify(voiceContext()),
   ].join('\n\n');
-  return await sendAgentMessage(null, {message, fromVoice:true});
+  // Bound context to the server's message limit.
+  return await sendAgentMessage(null, {message:message.slice(0, 8000), fromVoice:true});
 }
 function sendVoiceText(text) {
   if (!voice.active || !voice.ready || !text.trim()) return;
@@ -968,9 +976,9 @@ function closeVoice(message = 'Conversation ended.') {
   if (!voice.active && !voice.stream && !voice.audio && !voice.socket) return;
   voice.active = false; voice.ready = false; voice.generation += 1;
   voice.responseActive = false;
-  voice.userDraft = null; voice.assistantDraft = null;
+  voice.userDraft = null; voice.assistantDraft = null; voiceTranscript.clear();
   voice.aborter?.abort(); voice.aborter = null;
-  voice.pendingTools = []; voice.toolRun = false;
+  voice.pendingTools = []; voice.toolRun = false; voice.awaitingToolReply = false;
   voice.audioQueue = []; voice.tools = [];
   if (voice.socket) { voice.socket.onclose = null; try { voice.socket.close(1000, 'Conversation ended'); } catch {} }
   voice.socket = null;
@@ -993,7 +1001,9 @@ function sendVoiceEvent(event) {
 }
 async function executePendingVoiceTools(generation) {
   if (voice.toolRun || !voice.pendingTools.length) return;
-  voice.toolRun = true; voiceState('thinking', 'Checking project files and hardware evidence…');
+  voice.toolRun = true; voice.awaitingToolReply = true; syncVoiceMicrophone();
+  sendVoiceEvent({type:'input_audio_buffer.clear'});
+  voiceState('thinking', 'Checking project files and hardware evidence…');
   const calls = voice.pendingTools.splice(0), outputs = [];
   for (const call of calls) {
     let result;
@@ -1011,7 +1021,7 @@ async function executePendingVoiceTools(generation) {
   if (waitMs) await new Promise(resolve => setTimeout(resolve, Math.min(waitMs + 30, 30_000)));
   if (voice.active && generation === voice.generation) {
     sendVoiceEvent({type:'response.create'});
-    voiceState('listening', 'Listening · ask a follow-up whenever you’re ready.');
+    voiceState('thinking', 'Measurements complete · preparing the spoken summary…');
   }
 }
 function handleVoiceEvent(event, generation) {
@@ -1033,16 +1043,16 @@ function handleVoiceEvent(event, generation) {
     voice.ready = true;
     for (const audio of voice.audioQueue.splice(0)) sendVoiceEvent({type:'input_audio_buffer.append', audio:b64FromBuffer(audio)});
     el('agent-voice-toggle').disabled = false;
-    voiceState('listening', 'Listening · speak naturally; click to stop.');
+    voiceState('listening', voice.micMuted ? 'Microphone muted · type to continue.' : 'Listening · speak naturally; click to stop.');
   } else if (event.type === 'conversation.item.input_audio_transcription.updated') {
-    renderVoiceTurn('user', event.transcript || '', true);
+    renderVoiceTurn('user', event.transcript || '', true, event.item_id);
   } else if (event.type === 'conversation.item.input_audio_transcription.completed') {
-    renderVoiceTurn('user', event.transcript || '', true); finishVoiceDraft('user');
+    renderVoiceTurn('user', event.transcript || '', true, event.item_id); finishVoiceDraft('user');
   } else if (event.type === 'response.output_audio_transcript.delta') {
     const current = voice.assistantDraft?.text || '';
-    renderVoiceTurn('assistant', current + (event.delta || ''), true);
+    renderVoiceTurn('assistant', current + (event.delta || ''), true, event.item_id);
   } else if (event.type === 'response.output_audio_transcript.done') {
-    if (event.transcript) renderVoiceTurn('assistant', event.transcript, true);
+    if (event.transcript) renderVoiceTurn('assistant', event.transcript, true, event.item_id);
     finishVoiceDraft('assistant');
   } else if (event.type === 'response.output_audio.delta' || event.type === 'response.audio.delta') {
     if (event.delta) playVoiceAudio(event.delta);
@@ -1052,6 +1062,7 @@ function handleVoiceEvent(event, generation) {
     voice.responseActive = true;
     updateVoiceInterrupt();
   } else if (event.type === 'input_audio_buffer.speech_started') {
+    finishVoiceDraft('user');
     // Server VAD already interrupts an in-progress response. Sending a second
     // response.cancel here can race with response.done and make xAI report
     // "no active response found".
@@ -1070,11 +1081,16 @@ function handleVoiceEvent(event, generation) {
       voiceState('speaking', 'Grok is finishing · speak after the reply to avoid microphone echo.');
       voice.playbackTimer = setTimeout(() => {
         voice.playbackTimer = null;
-        if (voice.active && generationAtEnd === voice.generation)
-          voiceState('listening', 'Listening · speak naturally; click to stop.');
+        if (voice.active && generationAtEnd === voice.generation) {
+          voice.awaitingToolReply = false; syncVoiceMicrophone();
+          voiceState('listening', voice.micMuted ? 'Microphone muted · type to continue.' : 'Listening · speak naturally; click to stop.');
+        }
         updateVoiceInterrupt();
       }, waitMs + 40);
-    } else voiceState('listening', 'Listening · speak naturally; click to stop.');
+    } else {
+      voice.awaitingToolReply = false; syncVoiceMicrophone();
+      voiceState('listening', voice.micMuted ? 'Microphone muted · type to continue.' : 'Listening · speak naturally; click to stop.');
+    }
   } else if (event.type === 'error') {
     const errorMessage = String(event.error?.message || 'check the xAI connection and retry.');
     // The response can finish between showing the interrupt button and the
@@ -1102,6 +1118,7 @@ async function startVoice() {
       throw Error('This browser does not support live microphone audio.');
     voice.stream = await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,
       noiseSuppression:true,autoGainControl:true}});
+    syncVoiceMicrophone();
     voice.audio = new AudioContext({sampleRate:24000});
     await voice.audio.resume();
     await voice.audio.audioWorklet.addModule('/audio-worklet.js');
@@ -1134,7 +1151,7 @@ async function startVoice() {
     voice.mute = voice.audio.createGain(); voice.mute.gain.value = 0;
     voice.processor.port.onmessage = message => {
       if (!voice.active || !voice.socket || voice.socket.readyState !== WebSocket.OPEN) return;
-      if (voice.toolRun) return;
+      if (voice.toolRun || voice.awaitingToolReply || voice.micMuted) return;
       if (voice.ready) sendVoiceEvent({type:'input_audio_buffer.append', audio:b64FromBuffer(message.data)});
       else {
         voice.audioQueue.push(message.data);
@@ -1201,6 +1218,7 @@ el('save-capture-form').addEventListener('submit', saveNewCapture);
 el('preview-toggle').addEventListener('click', togglePreview);
 el('agent-chat-form').addEventListener('submit', sendAgentMessage);
 el('agent-voice-toggle').addEventListener('click', toggleVoice);
+el('agent-mic-mute').addEventListener('click', toggleVoiceMicrophone);
 el('agent-interrupt').addEventListener('click', interruptVoice);
 el('agent-stop').addEventListener('click', () => {
   fetch('/api/agent/stop', {method:'POST', headers:{'X-Benchy-Local':'1'}}).catch(() => {});
@@ -1210,7 +1228,7 @@ el('agent-dictate').addEventListener('click', startAgentDictation);
 el('agent-new-chat').addEventListener('click', () => {
   if (agentState.active) return;
   if (voice.active) closeVoice('Voice conversation ended · new chat started.');
-  agentState.threadId = null; agentState.messages = []; saveAgentChat(); renderAgentChat();
+  agentState.threadId = null; agentState.messages = []; voiceTranscript.clear(); saveAgentChat(); renderAgentChat();
   setAgentStatus(agentConfigured ? 'New conversation ready.' : 'Waiting for the local debugging agent.');
 });
 el('agent-export-chat').addEventListener('click', () => download('benchy-debug-chat.json', {

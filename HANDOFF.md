@@ -1,7 +1,57 @@
 # Benchy handoff
 
-## Current: collaborator dashboard merged and verified locally (2026-09-26)
+## Current: UI-only four-person demo and voice polish (2026-09-26 late)
 
+- Canonical script: **DEMO_4_PEOPLE.md**. All software interaction stays in
+  the website; only the input-jumper correction is physical. Four roles:
+  Story/TA, Hardware, Investigator/UI operator, Verifier.
+- **Both faults are physically confirmed together now.** User swapped C6
+  IO1/IO2 and then reseated them. The first capture had light mismatch but
+  `alert=0`, so the timing defect was latent, not measurable. Do not use that
+  first capture as proof of active 10 Hz output.
+- After reseating: S3 P1 **2.299 V**, P2 **0 V**; C6 light **~0.002 V**,
+  water **~2.340 V**, `alert=1`, `fault=3`; D3 **40 transitions / 2 seconds**
+  (**20/s**, corresponding to **10 Hz** for the square wave), expected 3–5/s.
+  No capture errors. Saved **Reseated input swap — combined rehearsal**,
+  `dashboard/2bbc66c6b75b4fdc8c7199c09bf81443.json`, portable evidence:
+  `validation_runs/2026-09-26-combined-reseated.json`.
+- User requested removal of the illustrative **On the bench** section.
+  Diagram and Design map navigation removed; Assessment fills the width.
+- User exercised voice and reported duplicate partial captions and white
+  text. Added a cumulative-transcript reducer keyed by item IDs, coalescing
+  repeated cumulative completions, plus readable dark text / distinct speaker
+  backgrounds. Four regression tests reproduce streaming/repeated/corrected
+  captions and new turns. **13 Node UI tests pass.**
+- Voice now explicitly routes fresh-measurement requests through `ask_codex`
+  and passes bounded current context. Snapshot values must not be presented as
+  new measurements. Frequency vs CHANGE edge-count units are explained in
+  voice instructions. Website chat remains read-only for physical actions;
+  upload is the separate reviewed/confirmed dialog.
+- Final website voice rehearsal passed with explicit user permission: muted
+  microphone + typed question → xAI `ask_codex` → real measurement tools →
+  spoken/transcribed result identifying the swapped inputs and ~10 Hz alarm.
+  User had already exercised spoken input/audio. Microphone stopped afterward.
+  Added a visible mute control and automatically pause microphone input during
+  tool work and its readback so background conversation does not interrupt it.
+  Light-background evidence/timeline text and voice bubbles have dark text.
+- Final baseline saved through the website: **01 Both faults verified**,
+  2026-09-26 22:43 local. P1 **2.337 V**, P2 **0 V**, D3 **20 transitions/s**.
+  Portable copy: `validation_runs/2026-09-26-ui-two-fault-baseline.json`.
+  No browser warnings/errors; microphone is off. Keep the current wiring and
+  fault-3 firmware for the start of filming.
+- Portable combined-fault captures now preserve original bytes, allowing the
+  existing SHA-256 deduplication to show only one choice per capture.
+- **132 Python tests and 13 Node UI tests pass** after the final changes.
+  The suite includes a mocked HTTP flash confirmation/failure case. The upload endpoint
+  rejects missing confirmation, incorrect origin, and propagates upload failure.
+  **No real upload was performed in this merge/polish session**; deliberate
+  fault 3 remains in source and on C6, with the input swap left for the demo.
+
+## Earlier: collaborator dashboard merged and verified locally (2026-09-26)
+
+- User requested removal of **On the bench**: removed the illustrative
+  overhead diagram and Design map navigation. Assessment and pin coverage
+  remain; the demo script now starts there.
 - Fast-forwarded `main` through `6e8b7cd` and `08056c8`; no conflicts.
   Preserved the new styling, integrated Codex/Grok conversation, Gemini photo
   context, and separate Build & flash dialog.

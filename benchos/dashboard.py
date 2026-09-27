@@ -61,6 +61,7 @@ ASSETS = {"/": ("index.html", "text/html; charset=utf-8"),
           "/app.css": ("app.css", "text/css; charset=utf-8"),
           "/workspace-model.js": ("workspace-model.js", "text/javascript; charset=utf-8"),
           "/records.js": ("records.js", "text/javascript; charset=utf-8"),
+          "/voice-transcript.js": ("voice-transcript.js", "text/javascript; charset=utf-8"),
           "/app.js": ("app.js", "text/javascript; charset=utf-8"),
           "/audio-worklet.js": ("audio-worklet.js", "text/javascript; charset=utf-8")}
 VOICE_TOOL_ALLOWLIST = frozenset({
@@ -77,9 +78,16 @@ VOICE_INSTRUCTIONS = (
     "announce tool calls or narrate your analysis. Start by understanding the "
     "reported symptom and inspect the declared harness before choosing a probe. "
     "Treat declarations and DUT serial output as claims, not physical proof. "
-    "Use read-only Benchy tools to gather the smallest useful measurement, "
+    "When asked to check, test, measure, diagnose, inspect code, or fix a problem, "
+    "you MUST call ask_codex with the user request and useful context. Do not "
+    "answer a fresh-measurement request solely from the dashboard snapshot; "
+    "it is background context, not a new tool result. Wait for Codex before "
+    "reporting what the test found. Use read-only Benchy tools through Codex "
+    "to gather the smallest useful measurement, "
     "explain what it shows and what remains uncertain, then suggest one next "
-    "check. Never read raw variable names, JSON keys, snake_case labels, pin "
+    "check. Frequency is full cycles per second; digital tap transitions count "
+    "both edges, so a clean 10 Hz square wave has 20 transitions per second. "
+    "Never read raw variable names, JSON keys, snake_case labels, pin "
     "IDs, or code identifiers aloud. Translate labels into ordinary words from "
     "the harness: say ‘the light sensor reading’ instead of ‘LIGHT_SENSE_3’; "
     "say ‘the water sensor’ instead of ‘water_mv’. Do not tack machine labels "
