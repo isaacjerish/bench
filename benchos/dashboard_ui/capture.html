@@ -4,16 +4,16 @@
 <body class="capture-page" data-token="__BENCHY_TOKEN__">
 <main class="capture-card">
   <p class="capture-kicker">BENCHY</p>
-  <h1>Visual Inspection</h1>
-  <p id="capture-lead">Take a clear photo of your device under test.</p>
+  <h1>Add context photos</h1>
+  <p id="capture-lead">Add up to four views of the device. Benchy uses them in your debugging conversation; photos are not electrical proof.</p>
   <div id="capture-pick" class="capture-actions">
-    <label class="primary-button">Take Photo<input id="take-photo" class="capture-file" type="file" accept="image/*" capture="environment"></label>
-    <label class="small-button">Choose Existing Photo<input id="choose-photo" class="capture-file" type="file" accept="image/*"></label>
+    <label class="primary-button">Take Photo<input id="take-photo" class="capture-file" type="file" accept="image/*" capture="environment" multiple></label>
+    <label class="small-button">Choose Existing Photos<input id="choose-photo" class="capture-file" type="file" accept="image/*" multiple></label>
   </div>
   <div id="capture-review" hidden>
     <img id="capture-preview" class="capture-preview" alt="Selected device photo">
     <div class="capture-actions">
-      <button id="capture-upload" class="primary-button" type="button">Upload</button>
+      <button id="capture-upload" class="primary-button" type="button">Add photos to Benchy context</button>
       <button id="capture-retake" class="small-button" type="button">Retake</button>
     </div>
   </div>
@@ -25,7 +25,7 @@ const pick = document.getElementById('capture-pick');
 const review = document.getElementById('capture-review');
 const preview = document.getElementById('capture-preview');
 const status = document.getElementById('capture-status');
-let prepared = null;
+let prepared = [];
 let previewUrl = '';
 let polling = false;
 
@@ -35,7 +35,7 @@ function showStatus(text) {
 }
 
 function resetPreview() {
-  prepared = null;
+  prepared = [];
   if (previewUrl) URL.revokeObjectURL(previewUrl);
   previewUrl = '';
   preview.removeAttribute('src');
@@ -43,43 +43,51 @@ function resetPreview() {
   pick.hidden = false;
 }
 
-async function prepare(file) {
-  if (!file) return;
-  showStatus('Preparing photo…');
+async function prepare(files) {
+  if (!files || !files.length) return;
+  showStatus('Preparing photos…');
   try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
-    if (!blob) throw Error('Could not prepare that photo.');
-    if (blob.size > 5 * 1024 * 1024) throw Error('Photo is still larger than 5 MB.');
-    prepared = blob;
+    prepared = [];
+    for (const file of [...files].slice(0, 4)) {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+      if (!blob) throw Error('Could not prepare a selected photo.');
+      if (blob.size > 5 * 1024 * 1024) throw Error('A photo is still larger than 5 MB.');
+      prepared.push(blob);
+    }
+    if (!prepared.length) return;
   } catch (error) {
-    prepared = null;
+    prepared = [];
     showStatus(error.message || 'Use a JPEG, PNG, or WEBP photo.');
     return;
   }
   if (previewUrl) URL.revokeObjectURL(previewUrl);
-  previewUrl = URL.createObjectURL(prepared);
+  previewUrl = URL.createObjectURL(prepared[0]);
   preview.src = previewUrl;
+  showStatus(`${prepared.length} photo${prepared.length === 1 ? '' : 's'} ready to add as conversation context.`);
   pick.hidden = true;
   review.hidden = false;
   status.hidden = true;
 }
 
 async function upload() {
-  if (!prepared) return;
+  if (!prepared.length) return;
   document.getElementById('capture-upload').disabled = true;
   showStatus('Sending photo…');
   try {
-    const response = await fetch('/capture/' + token, {method:'POST', headers:{'Content-Type':'image/jpeg'}, body:prepared});
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw Error(data.error || 'Upload failed.');
+    for (const photo of prepared) {
+      const response = await fetch('/capture/' + token, {method:'POST', headers:{'Content-Type':'image/jpeg'}, body:photo});
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw Error(data.error || 'Upload failed.');
+    }
     review.hidden = true;
-    showStatus('IMAGE RECEIVED ✓');
+    showStatus('Photos added as context. No separate photo analysis is run.');
     poll();
   } catch (error) {
     document.getElementById('capture-upload').disabled = false;
@@ -98,10 +106,12 @@ async function poll() {
       polling = false;
       return;
     }
-    if (data.status === 'uploaded') showStatus('IMAGE RECEIVED ✓');
-    else if (data.status === 'analyzing') showStatus('IMAGE RECEIVED ✓\nAnalyzing DUT...');
+    if (data.status === 'uploaded') showStatus('Photo received as context.');
+    else if (data.status === 'analyzing') showStatus('Photo received as context.');
     else if (data.status === 'complete') {
-      showStatus('Analysis complete.\nReturn to Benchy to view the results.');
+      showStatus('Photo context is ready. Add more photos here, then ask Benchy a debugging question.');
+      review.hidden = true; pick.hidden = false;
+      document.getElementById('capture-upload').disabled = false;
       polling = false;
       return;
     } else if (data.status === 'error') {
@@ -123,8 +133,8 @@ async function poll() {
   setTimeout(poll, 1000);
 }
 
-document.getElementById('take-photo').addEventListener('change', event => prepare(event.target.files[0]));
-document.getElementById('choose-photo').addEventListener('change', event => prepare(event.target.files[0]));
+document.getElementById('take-photo').addEventListener('change', event => prepare(event.target.files));
+document.getElementById('choose-photo').addEventListener('change', event => prepare(event.target.files));
 document.getElementById('capture-upload').addEventListener('click', upload);
 document.getElementById('capture-retake').addEventListener('click', () => { resetPreview(); status.hidden = true; });
 poll();

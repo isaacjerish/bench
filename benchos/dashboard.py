@@ -7,18 +7,23 @@ token-limited route and is reachable only when a public base URL is configured.
 from __future__ import annotations
 
 import argparse
-import asyncio
+import base64
+import urllib.error
+import urllib.request
 import hashlib
 import json
 import math
 import os
 import re
+import shutil
+import sys
+import tempfile
 import subprocess
 import threading
 import time
-import traceback
 import urllib.error
 import urllib.request
+from importlib.util import find_spec
 from collections import deque
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -40,10 +45,9 @@ from .serial_lock import SerialPortLock
 from .records import list_records, read_record, write_record
 from .activity import compare_activity
 from .visual_inspection import (
-    SessionStore, VisualError, analyze_dut_image, build_inspection_context,
-    execute_check, findings_document, is_phone_capture_path, local_dashboard_allowed,
-    message_page, parse_capture_path, resolve_check, summarize_physical, validate_analysis,
-    validate_image, write_latest_findings, configured_model_name,
+    SessionStore, VisualError, build_inspection_context,
+    execute_check, is_phone_capture_path, local_dashboard_allowed,
+    message_page, parse_capture_path, resolve_check, summarize_physical, validate_image,
 )
 
 MODES = {"light", "led", "servo", "imu"}
@@ -51,7 +55,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 BASE_SOURCE_FILES = ("harness/current.yaml", "lab_controller/lab_controller.ino",
                      "lab_controller/config.h", "benchos/client.py",
                      "benchos/dashboard.py", "benchos/dashboard_ui/app.js",
-                     "benchos/dashboard_ui/audio-worklet.js",
                      "mcp_server/server.py")
 IMU_LINE = re.compile(r"IMU_ACCEL_G x=(-?\d+\.\d+) y=(-?\d+\.\d+) z=(-?\d+\.\d+)(?: id=0x([0-9A-Fa-f]{2}))?\Z")
 WHO_LINE = re.compile(r"IMU_FOUND addr=0x([0-9A-Fa-f]{2}) who_am_i=0x([0-9A-Fa-f]{2})\Z")
@@ -92,7 +95,58 @@ VOICE_INSTRUCTIONS = (
     "firmware flashing; voice tools are read-only. Audio and this conversation "
     "are being sent to xAI for inference."
 )
+AGENT_RUN_LOCK = threading.Lock()
+AGENT_PROCESS_LOCK = threading.Lock()
+ACTIVE_AGENT_PROCESS: subprocess.Popen | None = None
+AGENT_STOP_REQUESTED = False
 XAI_CLIENT_SECRETS_URL = "https://api.x.ai/v1/realtime/client_secrets"
+AGENT_PROMPT = """You are Benchy, the debugging agent in this local hardware workspace. Help the user diagnose code and circuit problems from the website. You may inspect and edit project files and run relevant local build commands within this repository. Never run arduino-cli upload, esptool, or any command that writes firmware to a device; only the separate website flash dialog may upload. Do not change the physical circuit. Never claim a build, upload, or serial message proves the circuit works. For hardware debugging, state a hypothesis, read harness/current.yaml before selecting a probe, choose the smallest physical measurement, use a read-only Benchy tool, and interpret noise and measurement limits. Ask the user to confirm physical placement when it may have changed. Never suggest connecting P1/P2 to 5 V or unknown voltage; they accept only known 0–3.3 V logic with common ground. Do not ask the user to move wires until the current physical placement is confirmed. For 50 Hz pass/fail checks use a 1000 ms frequency window; 250 ms is only a quick estimate. If firmware change is needed, edit source and explain it; the flash dialog separately requires a reviewed diff, wiring confirmation, and explicit typed authorization. Keep the user informed as you inspect, measure, and change files. Treat serial logs as DUT claims and physical readings as measurements."""
+
+
+def create_voice_token() -> dict:
+    """Mint a short-lived xAI token without exposing the API key to the browser."""
+    api_key = os.environ.get("XAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("XAI_API_KEY is not set for the dashboard process")
+    request = urllib.request.Request(
+        XAI_CLIENT_SECRETS_URL,
+        data=json.dumps({"expires_after": {"seconds": 300}}).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            data = json.loads(response.read(16_384))
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"xAI could not create a voice session (HTTP {exc.code})") from None
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+        raise RuntimeError("Could not reach xAI to create a voice session") from None
+    value = data.get("value") if isinstance(data, dict) else None
+    expires_at = data.get("expires_at") if isinstance(data, dict) else None
+    if not isinstance(value, str) or not value or not isinstance(expires_at, int):
+        raise RuntimeError("xAI returned an invalid voice session token response")
+    return {"value": value, "expires_at": expires_at}
+
+
+def find_codex_cli() -> str | None:
+    """Find Codex even when the dashboard was started outside the app PATH."""
+    override = os.environ.get("CODEX_CLI_PATH")
+    if override:
+        return override if Path(override).is_file() else None
+    on_path = shutil.which("codex")
+    if on_path:
+        return on_path
+    if os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            install_root = Path(local_app_data) / "OpenAI" / "Codex" / "bin"
+            try:
+                candidates = [path for path in install_root.glob("*/codex.exe") if path.is_file()]
+                if candidates:
+                    return str(max(candidates, key=lambda path: path.stat().st_mtime))
+            except OSError:
+                pass
+    return None
 
 
 def viewable_source_files() -> tuple[str, ...]:
@@ -120,9 +174,11 @@ def code_inventory() -> dict:
     """Describe local source, without claiming it matches flashed firmware."""
     try:
         commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT,
-                                capture_output=True, text=True, timeout=2, check=True).stdout.strip()
+                                capture_output=True, text=True, encoding="utf-8",
+                                errors="replace", timeout=2, check=True).stdout.strip()
         status = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
-                                cwd=REPO_ROOT, capture_output=True, text=True, timeout=2,
+                                cwd=REPO_ROOT, capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", timeout=2,
                                 check=True).stdout.splitlines()
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         commit, status = None, []
@@ -347,7 +403,6 @@ class DashboardState:
         self.last_probes: dict | None = None
         self.last_capture: dict | None = None
         self.visual = SessionStore()
-        self.vision_analyzer = None
 
     @contextmanager
     def instrument_access(self):
@@ -586,25 +641,7 @@ class DashboardState:
 
     def accept_visual_image(self, token: str, data: bytes, content_type: str) -> dict:
         mime = validate_image(data, content_type)
-        view = self.visual.store_image(token, data, mime)
-        threading.Thread(target=self._analyze_visual, args=(token,), daemon=True).start()
-        return view
-
-    def _analyze_visual(self, token: str) -> None:
-        try:
-            image, mime = self.visual.begin_analysis(token)
-            context = self.inspection_context()
-            if self.vision_analyzer is not None:
-                analysis = validate_analysis(self.vision_analyzer(image, mime, context))
-            else:
-                analysis = analyze_dut_image(image, mime, context)
-            if self.visual.complete(token, analysis, context, configured_model_name()):
-                write_latest_findings(findings_document(analysis, context, configured_model_name()))
-        except VisualError as exc:
-            self.visual.fail(token, str(exc))
-        except Exception:
-            traceback.print_exc()
-            self.visual.fail(token, "Visual analysis failed. See the dashboard terminal for details.")
+        return self.visual.store_image(token, data, mime)
 
     def run_visual_check(self, lab_port: str, measurement: str, target: str) -> dict:
         spec = resolve_check(measurement, target)
@@ -709,16 +746,74 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         "instructions": VOICE_INSTRUCTIONS})
             return
         if route.path == "/api/voice/tools":
+            self._json({"tools": [{
+                "type": "function", "name": "ask_codex",
+                "description": "Hand the user's debugging problem to the local Codex engineer. Use this when code inspection, a physical measurement, or a concrete diagnosis is needed. Include what the user observed, relevant conversation context, and what you want Codex to investigate. Codex will inspect the local project and may take read-only physical measurements.",
+                "parameters": {
+                    "type": "object", "properties": {
+                        "problem": {"type": "string", "description": "The user's symptom and expected behavior."},
+                        "context": {"type": "string", "description": "Relevant details established in the conversation, including what has already been tried."},
+                        "investigation": {"type": "string", "description": "The specific question or next investigation for Codex."}
+                    }, "required": ["problem", "context", "investigation"], "additionalProperties": False
+                }
+            }]})
+            return
+        if route.path == "/api/agent/status":
+            binary = find_codex_cli()
             try:
-                self._json({"tools": voice_tool_specs()})
-            except (ImportError, RuntimeError) as exc:
-                self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
-            except Exception:
-                self._json({"error": "Could not load the voice debugging tools"},
-                           HTTPStatus.SERVICE_UNAVAILABLE)
+                mcp_available = find_spec("mcp") is not None
+            except (ImportError, ValueError):
+                mcp_available = False
+            self._json({"configured": bool(binary and mcp_available),
+                        "codex_cli": bool(binary), "benchy_tools": mcp_available,
+                        "codex_cli_source": "configured path" if os.environ.get("CODEX_CLI_PATH") else
+                            "PATH" if shutil.which("codex") else "Codex desktop install" if binary else None,
+                        "model": "Codex · local workspace"})
             return
         if route.path == "/api/code":
             self._json(code_inventory())
+            return
+        if route.path == "/api/agent/diff":
+            try:
+                result = subprocess.run(["git", "diff", "--no-ext-diff", "--unified=3"],
+                    cwd=REPO_ROOT, capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", timeout=5, check=True)
+                parts = [result.stdout]
+                additions = subprocess.run(["git", "ls-files", "--others", "--exclude-standard"],
+                    cwd=REPO_ROOT, capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", timeout=5, check=True)
+                reviewable = {".py", ".ino", ".h", ".cpp", ".c", ".js", ".ts", ".json",
+                              ".md", ".yaml", ".yml", ".html", ".css", ".txt", ".toml", ".sh", ".ps1"}
+                for relative in additions.stdout.splitlines():
+                    candidate = (REPO_ROOT / relative).resolve()
+                    try:
+                        safe_path = candidate.is_relative_to(REPO_ROOT)
+                    except (OSError, ValueError):
+                        safe_path = False
+                    if (not safe_path or Path(relative).suffix.lower() not in reviewable
+                            or any(part.startswith(".") for part in Path(relative).parts)
+                            or not candidate.is_file() or candidate.stat().st_size > 100_000):
+                        continue
+                    content = candidate.read_text(encoding="utf-8", errors="replace")
+                    parts.append(f"--- /dev/null\n+++ b/{relative}\n" +
+                                 "@@ new file @@\n" + "\n".join("+" + line for line in content.splitlines()))
+                diff = "\n".join(part for part in parts if part)
+                self._json({"source": "local_git_diff", "diff": diff[:200_000],
+                            "truncated": len(diff) > 200_000,
+                            "empty": not bool(diff)})
+            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                self._json({"error": f"Could not read the project diff: {exc}"},
+                           HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+        if route.path == "/api/agent/flash-plan":
+            try:
+                from benchos.flash import plan_dut_flash
+                self._json({"ok": True, **plan_dut_flash()})
+            except (OSError, ValueError, yaml.YAMLError) as exc:
+                self._json({"ok": False, "error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
+            except Exception as exc:
+                self._json({"ok": False, "error": f"Flash planning failed: {exc}"},
+                           HTTPStatus.SERVICE_UNAVAILABLE)
             return
         if route.path == "/api/source":
             name = parse_qs(route.query).get("path", [""])[0]
@@ -881,6 +976,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if route in {"/api/voice/session", "/api/voice/tool"}:
             self._do_voice_post(route)
             return
+        if route == "/api/agent/chat":
+            self._do_agent_chat()
+            return
+        if route == "/api/agent/flash":
+            self._do_agent_flash()
+            return
+        if route == "/api/agent/stop":
+            self._do_agent_stop()
+            return
         if route not in {"/api/harness/probes", "/api/records"}:
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -954,46 +1058,258 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
     def _do_voice_post(self, path: str) -> None:
-        expected_origin = f"http://127.0.0.1:{self.server.server_address[1]}"
-        if (self.headers.get("X-Benchy-Local") != "1"
+        expected_origins = {
+            f"http://127.0.0.1:{self.server.server_address[1]}",
+            f"http://localhost:{self.server.server_address[1]}",
+        }
+        if (path != "/api/voice/session"
+                or self.headers.get("X-Benchy-Local") != "1"
                 or self.headers.get_content_type() != "application/json"
-                or self.headers.get("Origin") != expected_origin):
+                or self.headers.get("Origin") not in expected_origins):
             self._json({"error": "Local dashboard request required"}, HTTPStatus.FORBIDDEN)
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if not 1 <= length <= 32_768:
+            if not 1 <= length <= 1024:
+                raise ValueError("Invalid request size")
+            json.loads(self.rfile.read(length))
+            self._json(create_voice_token())
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        except RuntimeError as exc:
+            self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
+    def _do_agent_chat(self) -> None:
+        global ACTIVE_AGENT_PROCESS, AGENT_STOP_REQUESTED
+        expected_origins = {
+            f"http://127.0.0.1:{self.server.server_address[1]}",
+            f"http://localhost:{self.server.server_address[1]}",
+        }
+        if (self.headers.get("X-Benchy-Local") != "1"
+                or self.headers.get_content_type() != "application/json"
+                or self.headers.get("Origin") not in expected_origins):
+            self._json({"error": "Local dashboard request required"}, HTTPStatus.FORBIDDEN)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 1 <= length <= 28_000_000:
                 raise ValueError("Invalid request size")
             payload = json.loads(self.rfile.read(length))
             if not isinstance(payload, dict):
                 raise ValueError("JSON object required")
+            message = payload.get("message")
+            thread_id = payload.get("thread_id")
+            photos = payload.get("photos", [])
+            if not isinstance(message, str) or not message.strip() or len(message) > 8000:
+                raise ValueError("Message must contain 1–8000 characters")
+            if not isinstance(photos, list) or len(photos) > 4:
+                raise ValueError("Attach no more than four photos at once")
+            photo_bytes = []
+            for photo in photos:
+                if not isinstance(photo, str) or len(photo) > 7_000_000:
+                    raise ValueError("Each photo must be 5 MB or smaller")
+                match = re.fullmatch(r"data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)", photo)
+                if not match:
+                    raise ValueError("Photos must be JPEG, PNG, or WEBP images")
+                data = base64.b64decode(match.group(2), validate=True)
+                validate_image(data, match.group(1))
+                photo_bytes.append((data, match.group(1)))
+            for phone_photo in self.server.state.visual.images():
+                if len(photo_bytes) == 4:
+                    break
+                photo_bytes.append(phone_photo)
+            if thread_id is not None and (not isinstance(thread_id, str)
+                    or not re.fullmatch(r"[0-9a-fA-F-]{36}", thread_id)):
+                raise ValueError("Invalid conversation id")
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
 
-        if path == "/api/voice/session":
-            try:
-                self._json(create_voice_token())
-            except RuntimeError as exc:
-                self._json({"error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
-            return
-
-        name = payload.get("name")
-        arguments = payload.get("arguments", {})
-        if not isinstance(name, str) or not isinstance(arguments, dict):
-            self._json({"error": "Tool name and JSON object arguments are required"},
-                       HTTPStatus.BAD_REQUEST)
-            return
-        if name not in VOICE_TOOL_ALLOWLIST and name != "read_source_file":
-            self._json({"error": "Tool is not enabled in voice mode"}, HTTPStatus.FORBIDDEN)
+        codex = find_codex_cli()
+        if not codex:
+            self._json({"error": "Codex CLI was not found. Start the dashboard from the signed-in Codex app, or set CODEX_CLI_PATH to the full path of codex.exe and restart it."},
+                       HTTPStatus.SERVICE_UNAVAILABLE)
             return
         try:
-            self._json(invoke_voice_tool(name, arguments))
-        except ValueError as exc:
-            self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
-        except Exception as exc:
-            self._json({"error": f"Voice tool failed: {exc}"},
+            if find_spec("mcp") is None:
+                raise ImportError
+        except (ImportError, ValueError):
+            self._json({"error": "Install the project MCP extra in this Python environment, then restart the dashboard."},
                        HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+        if not AGENT_RUN_LOCK.acquire(blocking=False):
+            self._json({"error": "Benchy is already working on another request. Wait for it to finish, then retry."},
+                       HTTPStatus.CONFLICT)
+            return
+
+        with AGENT_PROCESS_LOCK:
+            AGENT_STOP_REQUESTED = False
+
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+        def emit(value: dict) -> None:
+            encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+            self.wfile.write(f"data: {encoded}\n\n".encode("utf-8"))
+            self.wfile.flush()
+
+        process = None
+        image_temp = tempfile.TemporaryDirectory(prefix=".benchy-photos-", dir=REPO_ROOT) if photo_bytes else None
+        try:
+            emit({"kind": "status", "message": "Starting local Codex agent…"})
+            args = [codex, "exec"]
+            if thread_id:
+                # `exec resume` accepts JSON/config options before its session id,
+                # but does not support `--cd` or `--sandbox`. Resume restores the
+                # original workspace and policy from the saved session.
+                args += ["resume", "--json", "--ignore-user-config"]
+            else:
+                args += ["--json", "--cd", str(REPO_ROOT), "--sandbox", "workspace-write",
+                         "--ignore-user-config"]
+            python_path = Path(sys.executable).resolve().as_posix().replace('"', '\\"')
+            repo_path = REPO_ROOT.as_posix().replace('"', '\\"')
+            mcp_config = (
+                f'mcp_servers.benchy.command="{python_path}"',
+                'mcp_servers.benchy.args=["-m","mcp_server.agent_readonly"]',
+                f'mcp_servers.benchy.env.PYTHONPATH="{repo_path}"',
+                'mcp_servers.benchy.enabled=true',
+            )
+            for item in mcp_config:
+                args += ["--config", item]
+            if thread_id:
+                args.append(thread_id)
+            args.append("-")
+            environment = os.environ.copy()
+            profile = environment.get("USERPROFILE")
+            if profile:
+                if not environment.get("HOME"):
+                    environment["HOME"] = profile
+                if not environment.get("CODEX_HOME"):
+                    environment["CODEX_HOME"] = str(Path(profile) / ".codex")
+            with tempfile.TemporaryFile() as error_file:
+                process = subprocess.Popen(args, cwd=REPO_ROOT, env=environment,
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=error_file,
+                    text=True, encoding="utf-8", errors="replace", bufsize=1,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                with AGENT_PROCESS_LOCK:
+                    ACTIVE_AGENT_PROCESS = process
+                    if AGENT_STOP_REQUESTED:
+                        process.terminate()
+                image_paths = []
+                if image_temp:
+                    for index, (data, mime) in enumerate(photo_bytes, 1):
+                        suffix = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[mime]
+                        image_path = Path(image_temp.name) / f"context-{index}{suffix}"
+                        image_path.write_bytes(data)
+                        image_paths.append(str(image_path))
+                photo_context = ("\n\nUser attached photos as secondary visual context. Use the Codex image viewing capability (view_image) on these temporary files if helpful: "
+                                 + ", ".join(image_paths)
+                                 + ". Describe only visible details and uncertainty; do not treat appearance as an electrical measurement. These files are temporary and are deleted after this response.") if image_paths else ""
+                prompt = AGENT_PROMPT + "\n\nUser message:\n" + message.strip() + photo_context
+                assert process.stdin is not None
+                process.stdin.write(prompt)
+                process.stdin.close()
+                assert process.stdout is not None
+                actual_thread_id = thread_id
+                for line in process.stdout:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        emit({"kind": "status", "message": line[:1000]})
+                        continue
+                    if isinstance(event, dict):
+                        if event.get("type") == "thread.started":
+                            actual_thread_id = event.get("thread_id") or actual_thread_id
+                        emit({"kind": "codex_event", "event": event,
+                              "thread_id": actual_thread_id})
+                return_code = process.wait()
+                if return_code:
+                    error_file.seek(0)
+                    diagnostic = error_file.read(16_384).decode("utf-8", errors="replace")
+                    emit({"kind": "error", "message": diagnostic.strip() or
+                          f"Codex exited with status {return_code}.",
+                          "thread_id": actual_thread_id})
+                else:
+                    emit({"kind": "complete", "thread_id": actual_thread_id})
+        except (BrokenPipeError, ConnectionResetError):
+            if process and process.poll() is None:
+                process.terminate()
+        except (OSError, RuntimeError, ValueError) as exc:
+            try:
+                emit({"kind": "error", "message": str(exc)[:2000], "thread_id": thread_id})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+        finally:
+            with AGENT_PROCESS_LOCK:
+                if ACTIVE_AGENT_PROCESS is process:
+                    ACTIVE_AGENT_PROCESS = None
+                AGENT_STOP_REQUESTED = False
+            if process and process.poll() is None:
+                process.terminate()
+            if image_temp:
+                image_temp.cleanup()
+            AGENT_RUN_LOCK.release()
+
+    def _do_agent_flash(self) -> None:
+        expected_origins = {
+            f"http://127.0.0.1:{self.server.server_address[1]}",
+            f"http://localhost:{self.server.server_address[1]}",
+        }
+        if (self.headers.get("X-Benchy-Local") != "1"
+                or self.headers.get_content_type() != "application/json"
+                or self.headers.get("Origin") not in expected_origins):
+            self._json({"error": "Local dashboard request required"}, HTTPStatus.FORBIDDEN)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 1 <= length <= 2048:
+                raise ValueError("Invalid request size")
+            payload = json.loads(self.rfile.read(length))
+            if (not isinstance(payload, dict)
+                    or payload.get("confirmation") != "FLASH_DECLARED_DUT"
+                    or payload.get("wiring_confirmed") is not True):
+                raise ValueError("Confirm the declared DUT target and current physical wiring before flashing")
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        if not AGENT_RUN_LOCK.acquire(blocking=False):
+            self._json({"error": "Benchy is already working on another request. Wait for it to finish, then retry."},
+                       HTTPStatus.CONFLICT)
+            return
+        try:
+            from benchos.flash import build_dut_firmware, flash_result_ok
+            result = build_dut_firmware(flash=True)
+            response = {"ok": flash_result_ok(result), **result}
+            self._json(response, HTTPStatus.OK if response["ok"] else HTTPStatus.CONFLICT)
+        except (OSError, ValueError) as exc:
+            self._json({"ok": False, "error": str(exc)}, HTTPStatus.SERVICE_UNAVAILABLE)
+        except Exception as exc:
+            self._json({"ok": False, "error": f"Build or flash failed: {exc}"},
+                       HTTPStatus.SERVICE_UNAVAILABLE)
+        finally:
+            AGENT_RUN_LOCK.release()
+
+    def _do_agent_stop(self) -> None:
+        expected_origins = {
+            f"http://127.0.0.1:{self.server.server_address[1]}",
+            f"http://localhost:{self.server.server_address[1]}",
+        }
+        if (self.headers.get("X-Benchy-Local") != "1"
+                or self.headers.get("Origin") not in expected_origins):
+            self._json({"error": "Local dashboard request required"}, HTTPStatus.FORBIDDEN)
+            return
+        with AGENT_PROCESS_LOCK:
+            if AGENT_RUN_LOCK.locked():
+                global AGENT_STOP_REQUESTED
+                AGENT_STOP_REQUESTED = True
+                if ACTIVE_AGENT_PROCESS and ACTIVE_AGENT_PROCESS.poll() is None:
+                    ACTIVE_AGENT_PROCESS.terminate()
+        self._json({"ok": True})
 
     def _json(self, value: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
         data = json.dumps(value).encode("utf-8")

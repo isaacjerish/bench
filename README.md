@@ -7,8 +7,9 @@ software capabilities.
 
 Benchy lets Codex inspect **real voltages and signal timing** while it debugs
 firmware. The ESP32-S3 is a small, input-only lab instrument; the ESP32-C6 is a
-separate device under test (DUT). No cloud, API key, frontend, or separate LLM
-runner is required.
+separate device under test (DUT). The instrument and dashboard run locally.
+The website assistant uses the signed-in Codex CLI for model access; no API key
+is stored by Benchy.
 
 ```text
 Codex --local MCP--> Python Benchy --USB serial--> ESP32-S3 --P1/P2--> circuit
@@ -245,50 +246,51 @@ Named demo checks remain available through the CLI and MCP tools. Edit
 `harness/current.yaml` after changing the design's DUT metadata or source
 files; use the page's connection editor for P1/P2/P3 declarations.
 
-Optional `activity_checks` in the harness compare physical tap activity with
-numeric DUT states. Each rule declares `tap`, `field`, `equals`,
-`min_transitions_per_s`, and `max_transitions_per_s`. These count both rising
-and falling transitions (a 2 Hz square wave gives about 4 transitions/s).
-The dashboard requires stable serial reports bracketing the counter window;
-missing/changing conditions are unverified. Analog comparisons also flag
-changing inputs instead of treating different moments as a definite mismatch.
-Neither check verifies light emission, current, or unprobed connections.
+### Website debugging assistant
 
-### Grok voice debugging
+The **Debug with Benchy** panel combines a live Grok voice conversation with
+the local Codex engineer. Set `XAI_API_KEY` in the environment before starting
+the dashboard to enable Grok voice; the server exchanges it for a short-lived
+browser token, so the API key is never sent to the browser. For example, in
+PowerShell run `$env:XAI_API_KEY = "your-xAI-key"` in the same terminal before
+launching the dashboard. Voice sessions use xAI's `grok-voice-latest` Realtime
+model. Install the `mcp` extra and ensure the local Codex CLI is signed in for
+Codex investigations. Start the dashboard and open
+<http://127.0.0.1:8765>. Text chat and browser dictation still work without
+starting a Grok voice session.
 
-The Investigation panel includes a microphone button for live speech-to-speech
-debugging. Voice mode needs the MCP extra and an `XAI_API_KEY` environment
-variable in the shell that launches the dashboard. The key stays on the server;
-the browser receives a short-lived xAI voice token. Set the variable before
-starting or restarting the dashboard.
+Grok handles the natural voice conversation and can hand the user's symptom,
+conversation summary, and requested investigation to Codex. Codex can inspect
+and edit this repository, run local build commands, and take read-only Benchy
+measurements; its result returns to Grok for a spoken explanation. Chat prompts
+and project context are processed by the signed-in Codex service. Grok voice
+audio and conversation are sent to xAI. Browser dictation uses the browser's
+speech service. Codex streams progress and shows the local Git diff. Only the
+Codex conversation ID is kept in browser storage for follow-ups; the visible
+chat transcript is cleared when the page reloads. The **New chat** button
+starts a fresh Codex conversation.
+For an upload, use **Build & flash…**: the site shows the declared board target,
+then requires confirmation that the real wiring matches the harness and that
+you reviewed the changes. The upload path rechecks the enrolled USB identity,
+and displays any configured post-flash physical checks.
 
-In macOS zsh, enter the key without echoing it or adding it to shell history:
+The website shows one Benchy transcript. Click **Start voice conversation**
+to talk naturally; its transcript and the final answers appear in that same
+conversation. While voice is active, typed messages also go to the live
+conversation. Use **Interrupt** or speak over an answer to cut it off and
+continue. Click **Dictate** to use browser speech recognition, which submits
+to the live conversation or directly to the debugging agent when voice is off.
+The voice session stops when you end it or reload the page.
 
-```zsh
-read -s "XAI_API_KEY?Enter xAI API key: "
-export XAI_API_KEY
-printf "\n"
-```
-
-In Windows PowerShell, enter it at a hidden prompt for the current session:
-
-```powershell
-$secure = Read-Host "xAI API key" -AsSecureString
-$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-try {
-    $env:XAI_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
-} finally {
-    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
-}
-```
-
-Launch the dashboard from that same terminal, open <http://127.0.0.1:8765>,
-and click **Start conversation**. Grok can read the declared harness and
-allowlisted source files and run read-only physical checks. It cannot build or
-flash firmware through voice mode. Audio, dashboard evidence, and any source
-files Grok reads are sent to xAI while the conversation is active. Voice
-transcripts and audio are not saved locally and are cleared when you stop.
-Audio API usage is billed by xAI.
+Add up to four photos with **Add photos / use camera**, or scan the temporary
+phone capture link. Photos are attached to the same Codex investigation as
+secondary visual context; the website does not run a separate photo diagnosis.
+Codex may describe visible details and uncertainty, but appearance is never
+treated as voltage, continuity, or other electrical proof. Photo files are
+resized in the browser, sent to the signed-in Codex service with the question,
+held temporarily inside the project workspace for that investigation, and
+removed after the response. If Grok voice is active, it speaks Codex's findings
+back into the same conversation.
 
 `./scripts/python.sh -m benchos.cli flash-plan` resolves the declared DUT
 sketch and unique USB device without uploading anything. `build-dut` compiles

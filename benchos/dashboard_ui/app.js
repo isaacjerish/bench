@@ -6,9 +6,17 @@ let harness = null, latestSample = null, latestBus = null, latestTaps = null, in
 let preview = false, auto = true, probeBusy = false, busBusy = false, serialBusy = false, serialPaused = false;
 let captureBusy = false;
 let serialSeq = 0, serialEvents = [], session = [];
-const voice = {active:false, ready:false, socket:null, stream:null, audio:null, source:null,
-  processor:null, mute:null, playbackAt:0, playbackTimer:null, players:new Set(), pendingTools:[], toolRun:false,
-  userDraft:null, assistantDraft:null, aborter:null, generation:0, audioQueue:[], tools:[]};
+let agentConfigured = false;
+const agentState = {threadId:null, messages:[], active:false, aborter:null, recognition:null, voiceTurn:false};
+const agentFlash = {plan:null, ready:false, running:false, lastResult:null};
+const voice = {active:false, ready:false, responseActive:false, socket:null, stream:null, audio:null, source:null, processor:null, mute:null, playbackAt:0, playbackTimer:null, players:new Set(), pendingTools:[], toolRun:false, userDraft:null, assistantDraft:null, aborter:null, generation:0, audioQueue:[], tools:[]};
+try {
+  const savedAgent = JSON.parse(localStorage.getItem('benchy-codex-chat-v1') || '{}');
+  agentState.threadId = typeof savedAgent.threadId === 'string' ? savedAgent.threadId : null;
+  agentState.messages = [];
+  // Keep the Codex thread for continuity, but discard cached message text on reload.
+  localStorage.setItem('benchy-codex-chat-v1', JSON.stringify({threadId:agentState.threadId}));
+} catch {}
 try {
   const saved = JSON.parse(localStorage.getItem('benchos-workspace-session-v2') || '[]');
   if (Array.isArray(saved)) session = saved.slice(-100);
@@ -557,32 +565,298 @@ async function loadSource() {
     target.append(fragment);
   } catch (error) { setText('source-meta', 'Source unavailable: ' + error.message); }
 }
-function voiceState(state, message) {
-  el('voice-debug').dataset.state = state;
-  setText('voice-status', message);
+function saveAgentChat() {
+  try { localStorage.setItem('benchy-codex-chat-v1', JSON.stringify({threadId:agentState.threadId})); } catch {}
 }
-function clearVoiceTranscript() {
-  el('voice-transcript').replaceChildren();
-  const p = document.createElement('p'); p.className = 'empty-state';
-  p.textContent = 'Your live transcript will appear here while the microphone is active.';
-  el('voice-transcript').append(p);
-  voice.userDraft = null; voice.assistantDraft = null;
+function renderAgentChat() {
+  const target = el('agent-transcript'); target.replaceChildren();
+  if (!agentState.messages.length) {
+    const empty = document.createElement('p'); empty.className = 'empty-state';
+    empty.textContent = 'Describe the symptom in your own words. Benchy can inspect project files and, when connected, take read-only physical measurements. Start voice to talk naturally with Benchy.';
+    target.append(empty); return;
+  }
+  for (const message of agentState.messages) {
+    const isVoice = message.source === 'grok';
+    const node = document.createElement(isVoice ? 'div' : 'article');
+    node.className = isVoice ? 'voice-turn' : 'agent-message'; node.dataset.role = message.role;
+    const label = document.createElement(isVoice ? 'strong' : 'span');
+    if (!isVoice) label.className = 'agent-message-label';
+    label.textContent = message.role === 'user' ? 'You' : 'Benchy';
+    const body = document.createElement('span'); body.textContent = message.text || '';
+    if (message.photoCount) body.textContent += ` · ${message.photoCount} photo${message.photoCount === 1 ? '' : 's'} attached as visual context`;
+    node.append(label, body); target.append(node);
+  }
+  target.scrollTop = target.scrollHeight;
+}
+function setAgentStatus(message) { setText('agent-status', message); }
+async function refreshAgentDiff() {
+  setText('agent-diff-status', 'Loading current working-tree diff…');
+  try {
+    const response = await fetch('/api/agent/diff', {cache:'no-store'}), data = await response.json();
+    if (!response.ok) throw Error(data.error || 'Diff unavailable');
+    setText('agent-diff', data.empty ? 'No tracked code changes in the working tree.' : data.diff + (data.truncated ? '\n\n[Diff truncated at 200,000 characters.]' : ''));
+    setText('agent-diff-status', data.empty ? 'No tracked changes.' : (data.truncated ? 'Showing first 200,000 characters.' : 'Current uncommitted tracked changes · read only'));
+  } catch (error) { setText('agent-diff-status', 'Could not load diff: ' + error.message); }
+}
+function updateFlashButton() {
+  const authorized = agentFlash.ready && el('agent-wiring-confirmed').checked &&
+    el('agent-flash-phrase').value.trim() === 'FLASH' && !agentFlash.running;
+  el('agent-flash-confirm').disabled = !authorized;
+}
+async function openFlashDialog() {
+  if (agentFlash.running || agentState.active) return;
+  el('agent-flash-dialog').showModal(); agentFlash.ready = false; agentFlash.plan = null;
+  el('agent-wiring-confirmed').checked = false; el('agent-flash-phrase').value = '';
+  el('agent-flash-confirm').disabled = true; el('agent-send-flash-result').hidden = true;
+  setText('agent-flash-result', ''); setText('agent-flash-plan-status', 'Checking the declared DUT and matching USB identity…');
+  setText('agent-flash-plan', 'Loading flash plan…');
+  try {
+    const response = await fetch('/api/agent/flash-plan', {cache:'no-store'}), data = await response.json();
+    if (!response.ok || !data.ok) throw Error(data.error || 'The declared DUT is not ready to flash.');
+    agentFlash.plan = data; agentFlash.ready = true;
+    setText('agent-flash-plan', JSON.stringify(data, null, 2));
+    setText('agent-flash-plan-status', 'Flash plan is ready. Upload rechecks the enrolled USB identity immediately before flashing.');
+  } catch (error) {
+    setText('agent-flash-plan-status', 'Cannot flash: ' + error.message);
+    setText('agent-flash-plan', 'No upload has started.');
+  }
+  updateFlashButton();
+}
+async function runConfirmedFlash() {
+  if (!agentFlash.ready || agentFlash.running || !el('agent-wiring-confirmed').checked || el('agent-flash-phrase').value.trim() !== 'FLASH') return;
+  agentFlash.running = true; updateFlashButton(); el('agent-send-flash-result').hidden = true;
+  setText('agent-flash-plan-status', 'Building firmware and uploading to the declared DUT. Keep both boards connected…');
+  setText('agent-flash-result', 'Working…');
+  try {
+    const response = await fetch('/api/agent/flash', {method:'POST', cache:'no-store',
+      headers:{'Content-Type':'application/json','X-Benchy-Local':'1'},
+      body:JSON.stringify({confirmation:'FLASH_DECLARED_DUT', wiring_confirmed:true})});
+    const data = await response.json(); agentFlash.lastResult = data;
+    setText('agent-flash-result', JSON.stringify(data, null, 2));
+    setText('agent-flash-plan-status', response.ok && data.ok ? 'Build/upload workflow finished. Review its physical post-check results below.' : 'Build/upload did not fully pass. Review the recorded result below.');
+    el('agent-send-flash-result').hidden = false;
+    refreshAgentDiff(); loadCode();
+  } catch (error) {
+    agentFlash.lastResult = {ok:false,error:error.message};
+    setText('agent-flash-result', error.message || 'The flash request failed.');
+    setText('agent-flash-plan-status', 'Flash request failed. Confirm the result before retrying.');
+    el('agent-send-flash-result').hidden = false;
+  } finally { agentFlash.running = false; updateFlashButton(); }
+}
+function assistantTextFromEvent(event) {
+  if (!event || typeof event !== 'object') return null;
+  if (typeof event.delta === 'string' && /agent.?message|output.?text/i.test(event.type || '')) return {delta:event.delta};
+  const item = event.item && typeof event.item === 'object' ? event.item : null;
+  if (item && /agent.?message/i.test(item.type || '') && typeof item.text === 'string') return {text:item.text};
+  if (event.type === 'item.completed' && item && typeof item.text === 'string' && item.type === 'agent_message') return {text:item.text};
+  return null;
+}
+function describeAgentEvent(event) {
+  const type = String(event?.type || '').toLowerCase();
+  const item = event?.item || {};
+  if (type.includes('mcp') || String(item.type || '').toLowerCase().includes('mcp')) return 'Using Benchy measurement tools…';
+  if (type.includes('command') || String(item.type || '').toLowerCase().includes('command')) return 'Inspecting or building the project…';
+  if (type.includes('filechange') || type.includes('file_change')) return 'Updating project files…';
+  if (type.includes('started')) return 'Benchy is investigating…';
+  return null;
+}
+async function loadAgentStatus() {
+  try {
+    const response = await fetch('/api/agent/status', {cache:'no-store'}), data = await response.json();
+    agentConfigured = Boolean(data.configured); el('agent-send').disabled = !agentConfigured; el('agent-flash-open').disabled = false;
+    if (data.configured) setAgentStatus('Ready · code and read-only hardware checks available.');
+    else if (!data.codex_cli) setAgentStatus('Codex CLI is unavailable to the dashboard. Restart the dashboard from a signed-in Codex environment.');
+    else setAgentStatus('Benchy tools are unavailable. Install the project MCP extra in this Python environment.');
+  } catch { setAgentStatus('Could not check the local Codex runtime.'); }
+  loadVoiceStatus();
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const button = el('agent-dictate'); button.disabled = !Recognition;
+  setText('agent-dictation-status', Recognition ? 'Browser dictation ready.' : 'Dictation requires Chrome or Edge.');
+}
+async function sendAgentMessage(event, options = {}) {
+  if (event) event.preventDefault();
+  const input = el('agent-message');
+  if (voice.active && !options.fromVoice && options.message == null) {
+    const voiceText = input.value.trim();
+    if (!voiceText) return;
+    if (voice.toolRun) { setAgentStatus('Benchy is checking the project and evidence. Wait for the answer before sending another message.'); return; }
+    if (!voice.ready) { setAgentStatus('Grok is still connecting. Try sending that again in a moment.'); return; }
+    if (voice.responseActive || voiceReplyIsPlaying()) interruptVoice();
+    input.value = '';
+    if (agentPhotos.length) {
+      const result = await sendAgentMessage(null, {message:voiceText, fromVoice:true, photos:agentPhotos.map(photo => photo.dataUrl)});
+      clearAgentPhotos();
+      sendVoiceEvent({type:'conversation.item.create', item:{type:'message', role:'user', content:[{type:'input_text', text:'Codex investigation result: ' + result + '. Explain the result to the user conversationally, using the attached photo as visual context only.'}]}});
+      sendVoiceEvent({type:'response.create'});
+      return;
+    }
+    sendVoiceText(voiceText); return;
+  }
+  const text = String(options.message ?? input.value).trim();
+  if (!text || agentState.active || (!options.fromVoice && el('agent-send').disabled)) return '';
+  if (options.message == null) input.value = '';
+  agentState.active = true;
+  const showCodexExchange = !options.fromVoice;
+  if (showCodexExchange) {
+    agentState.messages.push({role:'user', text});
+    renderAgentChat();
+  }
+  const reply = {role:'assistant', text:''};
+  const photos = options.photos || agentPhotos.map(photo => photo.dataUrl);
+  if (showCodexExchange && photos.length) agentState.messages[agentState.messages.length - 1].photoCount = photos.length;
+  if (showCodexExchange) agentState.messages.push(reply);
+  if (showCodexExchange) saveAgentChat();
+  el('agent-send').disabled = true; el('agent-flash-open').disabled = true; el('agent-stop').hidden = false;
+  setAgentStatus(options.fromVoice ? 'Checking project files and hardware evidence…' : 'Benchy is investigating…');
+  const controller = new AbortController(); agentState.aborter = controller; let requestError = false;
+  try {
+    const response = await fetch('/api/agent/chat', {method:'POST', cache:'no-store', signal:controller.signal,
+      headers:{'Content-Type':'application/json','X-Benchy-Local':'1'},
+      body:JSON.stringify({message:text, thread_id:agentState.threadId, photos})});
+    if (!response.ok) { const error = await response.json(); throw Error(error.error || 'Could not start the Codex agent.'); }
+    const reader = response.body.getReader(), decoder = new TextDecoder(); let buffer = '';
+    const consume = (frame) => {
+      const line = frame.split('\n').find(part => part.startsWith('data:'));
+      if (!line) return;
+      let data; try { data = JSON.parse(line.slice(5).trim()); } catch { return; }
+      if (data.thread_id) { agentState.threadId = data.thread_id; saveAgentChat(); }
+      if (data.kind === 'status') { setAgentStatus(data.message); return; }
+      if (data.kind === 'error') { requestError = true; if (showCodexExchange) { agentState.messages.push({role:'error', text:data.message}); renderAgentChat(); } return; }
+      if (data.kind === 'complete') return;
+      if (data.kind !== 'codex_event') return;
+      const event = data.event || {}, extracted = assistantTextFromEvent(event), status = describeAgentEvent(event);
+      if (status) setAgentStatus(status);
+      if (extracted?.delta) reply.text += extracted.delta;
+      if (extracted?.text) reply.text = extracted.text;
+      if (extracted && showCodexExchange) { renderAgentChat(); saveAgentChat(); }
+    };
+    while (true) {
+      const {value, done} = await reader.read(); buffer += decoder.decode(value || new Uint8Array(), {stream:!done});
+      const frames = buffer.split('\n\n'); buffer = frames.pop() || '';
+      for (const frame of frames) consume(frame);
+      if (done) break;
+    }
+    if (buffer.trim()) consume(buffer);
+    if (!reply.text) {
+      if (showCodexExchange) {
+        const replyIndex = agentState.messages.indexOf(reply);
+        if (replyIndex >= 0) agentState.messages.splice(replyIndex, 1);
+        if (!requestError) agentState.messages.push({role:'error', text:'The agent finished without returning a message. Check the dashboard terminal for a startup or authentication error.'});
+      }
+    }
+    if (showCodexExchange) { renderAgentChat(); saveAgentChat(); }
+    if (photos.length) clearAgentPhotos();
+    loadCode(); refreshAgentDiff();
+    if (agentState.threadId && !requestError) setAgentStatus('Ready · Benchy is ready for another question.');
+    else if (requestError) setAgentStatus('Request ended with an error.');
+  } catch (error) {
+    if (error.name !== 'AbortError') {
+      if (showCodexExchange) {
+        const replyIndex = agentState.messages.indexOf(reply);
+        if (replyIndex >= 0 && !reply.text) agentState.messages.splice(replyIndex, 1);
+        agentState.messages.push({role:'error', text:error.message || 'The Codex request failed.'});
+        renderAgentChat(); saveAgentChat();
+      }
+      setAgentStatus('Request ended with an error.');
+    } else {
+      if (showCodexExchange) {
+        const replyIndex = agentState.messages.indexOf(reply);
+        if (replyIndex >= 0 && !reply.text) agentState.messages.splice(replyIndex, 1);
+        renderAgentChat(); saveAgentChat();
+      }
+      setAgentStatus('Stopped.');
+    }
+  } finally {
+    agentState.active = false; agentState.aborter = null; agentState.voiceTurn = false;
+    el('agent-stop').hidden = true; el('agent-send').disabled = !agentConfigured; el('agent-flash-open').disabled = false;
+  }
+  return reply.text || (requestError ? 'Codex reported an error. See the Codex conversation above for details.' :
+    'Codex finished without a response. Check the local dashboard terminal for details.');
+}
+let agentPhotos = [];
+async function prepareAgentPhoto(file) {
+  if (!file || !file.type.startsWith('image/')) throw Error('Choose an image file.');
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+  if (!blob || blob.size > 5 * 1024 * 1024) throw Error('A photo is larger than 5 MB after resizing.');
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob);
+  });
+  return {name:file.name, blob, dataUrl, url:URL.createObjectURL(blob)};
+}
+function renderAgentPhotos() {
+  const root = el('agent-image-previews'); root.replaceChildren();
+  agentPhotos.forEach((photo, index) => {
+    const figure = document.createElement('figure'); figure.className = 'agent-photo-thumb';
+    const image = document.createElement('img'); image.src = photo.url; image.alt = photo.name || `Attached photo ${index + 1}`;
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'small-button'; remove.textContent = 'Remove';
+    remove.addEventListener('click', () => { URL.revokeObjectURL(photo.url); agentPhotos.splice(index, 1); renderAgentPhotos(); });
+    figure.append(image, remove); root.append(figure);
+  });
+  setText('agent-image-status', agentPhotos.length ? `${agentPhotos.length} photo${agentPhotos.length === 1 ? '' : 's'} attached as visual context · maximum 4` : 'Photos are visual context only; Benchy verifies electrical behavior with probes.');
+  el('agent-image-input').disabled = agentPhotos.length >= 4;
+}
+function clearAgentPhotos() {
+  for (const photo of agentPhotos) URL.revokeObjectURL(photo.url);
+  agentPhotos = []; renderAgentPhotos(); el('agent-image-input').value = '';
+}
+el('agent-image-input').addEventListener('change', async event => {
+  const files = [...event.target.files || []]; event.target.value = '';
+  try {
+    for (const file of files) {
+      if (agentPhotos.length >= 4) break;
+      agentPhotos.push(await prepareAgentPhoto(file));
+    }
+    renderAgentPhotos();
+  } catch (error) { setText('agent-image-status', error.message || 'Could not prepare that photo.'); }
+});
+function startAgentDictation() {
+  if (agentState.recognition) { agentState.recognition.stop(); return; }
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) return;
+  const recognition = new Recognition(); agentState.recognition = recognition;
+  recognition.lang = navigator.language || 'en-US'; recognition.interimResults = true; recognition.continuous = false;
+  let finalText = '';
+  el('agent-dictate').setAttribute('aria-pressed', 'true'); setText('agent-dictate', 'Listening…');
+  setText('agent-dictation-status', 'Speech is processed by your browser’s speech service.');
+  recognition.onresult = event => {
+    let interim = '';
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      const transcript = event.results[index][0].transcript;
+      if (event.results[index].isFinal) finalText += transcript + ' '; else interim += transcript;
+    }
+    el('agent-message').value = (finalText + interim).trim();
+  };
+  recognition.onerror = event => setText('agent-dictation-status', 'Speech input error: ' + event.error);
+  recognition.onend = () => {
+    agentState.recognition = null; el('agent-dictate').setAttribute('aria-pressed', 'false'); setText('agent-dictate', '🎙 Speak');
+    if (finalText.trim()) { agentState.voiceTurn = true; el('agent-chat-form').requestSubmit(); }
+    else setText('agent-dictation-status', 'No speech recognized. You can type or try again.');
+  };
+  recognition.start();
+}
+function voiceState(state, message) {
+  el('agent-voice-panel').dataset.state = state;
+  setText('agent-voice-status', message);
 }
 function renderVoiceTurn(role, text, draft = false) {
-  const target = el('voice-transcript');
-  target.querySelector('.empty-state')?.remove();
   let row = draft ? (role === 'user' ? voice.userDraft : voice.assistantDraft) : null;
   if (!row) {
-    row = document.createElement('div'); row.className = 'voice-turn'; row.dataset.role = role;
-    const label = document.createElement('strong'); label.textContent = role === 'user' ? 'You' : 'Grok';
-    const content = document.createElement('span'); row.append(label, content); target.append(row);
+    row = {role, text:'', source:'grok'};
+    agentState.messages.push(row);
     if (draft) {
       if (role === 'user') voice.userDraft = row;
       else voice.assistantDraft = row;
     }
   }
-  row.lastElementChild.textContent = text;
-  target.scrollTop = target.scrollHeight;
+  row.text = text;
+  renderAgentChat();
 }
 function finishVoiceDraft(role) {
   if (role === 'user') voice.userDraft = null;
@@ -616,9 +890,23 @@ function stopVoicePlayback() {
   for (const player of voice.players) { try { player.stop(); } catch {} }
   voice.players.clear();
   if (voice.audio) voice.playbackAt = voice.audio.currentTime;
+  updateVoiceInterrupt();
 }
 function voiceReplyIsPlaying() {
   return Boolean(voice.audio && voice.playbackAt > voice.audio.currentTime + 0.04);
+}
+function updateVoiceInterrupt() {
+  const button = el('agent-interrupt');
+  if (button) button.hidden = !voice.active || !(voice.responseActive || voiceReplyIsPlaying());
+}
+function interruptVoice() {
+  if (!voice.active) return;
+  if (voice.responseActive) sendVoiceEvent({type:'response.cancel'});
+  voice.responseActive = false;
+  finishVoiceDraft('assistant');
+  stopVoicePlayback();
+  updateVoiceInterrupt();
+  voiceState('listening', 'Interrupted · speak or type when you’re ready.');
 }
 function voiceContext() {
   const verdict = el('assessment');
@@ -645,16 +933,41 @@ async function voiceRequest(url, body) {
 async function loadVoiceStatus() {
   try {
     const response = await fetch('/api/voice/status', {cache:'no-store'}), data = await response.json();
-    const button = el('voice-toggle'); button.disabled = !data.configured;
-    voice.instructions = data.instructions || 'You are Benchy, a warm, natural and concise hardware debugging partner. Speak like a helpful person at the bench: respond to what the user just said, use contractions, vary your phrasing, keep most turns to one or two short sentences, and ask one focused question at a time. Never announce tool calls or narrate your analysis. Start by understanding the symptom and read the declared harness before choosing a probe. Distinguish physical S3 measurements from DUT claims. Use only read-only tools; never flash firmware. Never say raw variable names, JSON keys, snake_case labels, pin IDs, or code identifiers aloud. Translate labels into ordinary language, such as “the light sensor reading” instead of “LIGHT_SENSE_3.” Do not attach raw labels or classifications in parentheses. Mention a number only when useful, say units naturally, and compare it to the declared range rather than calling it high or low without context. If the harness has no plain-language description, say “that probe” and ask what it connects to. P1, P2, and P3 accept only known 0–3.3 V signals with common ground; never suggest 5 V or unknown voltage. If Preview mode is on, treat values as synthetic. Ask the user to confirm physical placement if wiring may have changed.';
+    const button = el('agent-voice-toggle'); button.disabled = !data.configured;
+    voice.instructions = data.instructions || 'You are Benchy, the natural Grok voice agent in a hardware debugging website. Speak warmly and concisely like a senior engineer at the bench. Ask one focused question at a time. For code diagnosis, circuit measurements, or evidence-backed claims, call ask_codex with the symptom, useful conversation context, and the next investigation. Wait for Codex and explain its result naturally. Never invent readings, claim to see wiring, suggest 5 V or unknown voltage on P1/P2, or authorize flashing. Treat photos as supporting context, not electrical proof. Preview readings are synthetic.';
     document.body.dataset.voiceConfigured = String(Boolean(data.configured));
-    if (data.configured) voiceState('idle', 'Ready · ' + data.model + ' · voice tools are read-only');
+    if (data.configured) voiceState('idle', 'Ready · voice conversation and interruption available.');
     else voiceState('error', 'Set XAI_API_KEY before launching the dashboard to enable voice.');
   } catch { voiceState('error', 'Voice setup status is unavailable.'); }
+}
+async function askCodexFromVoice(args) {
+  if (!args || typeof args !== 'object' || agentState.active)
+    return 'Codex is already handling another request. Wait for that investigation to finish, then ask again.';
+  const problem = String(args.problem || '').slice(0, 3000);
+  const context = String(args.context || '').slice(0, 3000);
+  const investigation = String(args.investigation || '').slice(0, 2000);
+  if (!problem || !investigation) return 'The handoff did not include a clear problem and investigation request. Ask the user one clarifying question, then try again.';
+  const message = [
+    'The user is debugging with Grok as the conversational voice agent. Please investigate this issue and provide a concise, evidence-based response that Grok can explain aloud.',
+    'User problem: ' + problem,
+    'Conversation context and what has already been tried: ' + (context || 'None supplied.'),
+    'Requested investigation: ' + investigation,
+  ].join('\n\n');
+  return await sendAgentMessage(null, {message, fromVoice:true});
+}
+function sendVoiceText(text) {
+  if (!voice.active || !voice.ready || !text.trim()) return;
+  renderVoiceTurn('user', text.trim());
+  sendVoiceEvent({type:'conversation.item.create', item:{type:'message', role:'user',
+    content:[{type:'input_text', text:text.trim()}]}});
+  sendVoiceEvent({type:'response.create'});
+  voiceState('thinking', 'Grok is considering your message…');
 }
 function closeVoice(message = 'Conversation ended.') {
   if (!voice.active && !voice.stream && !voice.audio && !voice.socket) return;
   voice.active = false; voice.ready = false; voice.generation += 1;
+  voice.responseActive = false;
+  voice.userDraft = null; voice.assistantDraft = null;
   voice.aborter?.abort(); voice.aborter = null;
   voice.pendingTools = []; voice.toolRun = false;
   voice.audioQueue = []; voice.tools = [];
@@ -667,27 +980,28 @@ function closeVoice(message = 'Conversation ended.') {
   if (voice.stream) for (const track of voice.stream.getTracks()) track.stop();
   voice.stream = null; stopVoicePlayback();
   if (voice.audio) { const context = voice.audio; voice.audio = null; context.close().catch(() => {}); }
-  clearVoiceTranscript();
-  el('voice-toggle').setAttribute('aria-pressed', 'false');
-  setText('voice-button-label', 'Start conversation');
+  el('agent-voice-toggle').setAttribute('aria-pressed', 'false');
+  setText('agent-voice-button-label', 'Start conversation');
   voiceState(message.startsWith('Could not') || message.startsWith('Voice error') ? 'error' : 'idle', message);
-  el('voice-toggle').disabled = document.body.dataset.voiceConfigured !== 'true';
+  el('agent-voice-toggle').disabled = document.body.dataset.voiceConfigured !== 'true';
+  el('agent-dictate').disabled = !(window.SpeechRecognition || window.webkitSpeechRecognition);
+  updateVoiceInterrupt();
 }
 function sendVoiceEvent(event) {
   if (voice.socket && voice.socket.readyState === WebSocket.OPEN) voice.socket.send(JSON.stringify(event));
 }
 async function executePendingVoiceTools(generation) {
   if (voice.toolRun || !voice.pendingTools.length) return;
-  voice.toolRun = true; voiceState('thinking', 'Grok is checking Benchy evidence…');
+  voice.toolRun = true; voiceState('thinking', 'Checking project files and hardware evidence…');
   const calls = voice.pendingTools.splice(0), outputs = [];
   for (const call of calls) {
     let result;
     try {
       const args = JSON.parse(call.arguments || '{}');
-      result = await voiceRequest('/api/voice/tool', {name:call.name, arguments:args});
+      result = await askCodexFromVoice(args);
     } catch (error) { result = {error:error.message || 'Tool call failed'}; }
     outputs.push({type:'conversation.item.create', item:{type:'function_call_output', call_id:call.call_id,
-      output:JSON.stringify(result)}});
+      output:typeof result === 'string' ? result : JSON.stringify(result)}});
   }
   voice.toolRun = false;
   if (!voice.active || generation !== voice.generation) return;
@@ -703,8 +1017,8 @@ function handleVoiceEvent(event, generation) {
   if (!voice.active || generation !== voice.generation) return;
   if (event.type === 'session.created') {
     const snapshot = voiceContext();
-    const instructions = (voice.instructions || 'You are Benchy, a warm and concise hardware debugging partner. Speak naturally in one or two short sentences. Never read raw variable names, JSON keys, snake_case labels, or pin IDs aloud; use plain-language names such as “the light sensor reading.” Do not narrate tool calls.') +
-      ' If Preview mode is on, treat every displayed reading as synthetic. Current dashboard snapshot (source labels are authoritative): ' + JSON.stringify(snapshot);
+    const instructions = (voice.instructions || 'You are Benchy, the natural Grok voice agent. Be concise and supportive. For diagnosis or measurements, call ask_codex; never invent readings or infer electrical facts from a photo.') +
+      ' Send the user symptom and relevant conversation history to Codex. Include current dashboard evidence and available visual inspection findings as context. Photos are secondary visual context only; do not run a separate photo diagnosis or state that appearance proves electrical behavior. P1, P2, and P3 are safe only for known 0–3.3 V signals with common ground. If physical placement may have changed, ask the user to confirm it. If Preview is on, readings are synthetic. Current dashboard snapshot (source labels are authoritative): ' + JSON.stringify(snapshot);
     voice.tools.forEach(tool => { if (tool.name === 'build_and_flash_dut' || tool.name === 'flash_dut') throw Error('Write tools are blocked in voice mode'); });
     sendVoiceEvent({type:'session.update', session:{
       modalities:['text','audio'], voice:'eve', instructions,
@@ -713,30 +1027,39 @@ function handleVoiceEvent(event, generation) {
         output:{format:{type:'audio/pcm',rate:24000}},
       }, tools:voice.tools, tool_choice:'auto'
     }});
-    voiceState('connecting', 'Connected · setting up microphone and read-only tools…');
+    voiceState('connecting', 'Connected · setting up the conversation…');
   } else if (event.type === 'session.updated') {
     voice.ready = true;
     for (const audio of voice.audioQueue.splice(0)) sendVoiceEvent({type:'input_audio_buffer.append', audio:b64FromBuffer(audio)});
-    el('voice-toggle').disabled = false;
+    el('agent-voice-toggle').disabled = false;
     voiceState('listening', 'Listening · speak naturally; click to stop.');
   } else if (event.type === 'conversation.item.input_audio_transcription.updated') {
     renderVoiceTurn('user', event.transcript || '', true);
   } else if (event.type === 'conversation.item.input_audio_transcription.completed') {
     renderVoiceTurn('user', event.transcript || '', true); finishVoiceDraft('user');
   } else if (event.type === 'response.output_audio_transcript.delta') {
-    const current = voice.assistantDraft?.lastElementChild?.textContent || '';
+    const current = voice.assistantDraft?.text || '';
     renderVoiceTurn('assistant', current + (event.delta || ''), true);
   } else if (event.type === 'response.output_audio_transcript.done') {
-    if (event.transcript && !voice.assistantDraft) renderVoiceTurn('assistant', event.transcript, true);
+    if (event.transcript) renderVoiceTurn('assistant', event.transcript, true);
     finishVoiceDraft('assistant');
   } else if (event.type === 'response.output_audio.delta' || event.type === 'response.audio.delta') {
     if (event.delta) playVoiceAudio(event.delta);
-    voiceState('speaking', 'Grok is speaking · interrupt any time.');
+    voiceState('speaking', 'Benchy is speaking · interrupt any time.');
+    updateVoiceInterrupt();
+  } else if (event.type === 'response.created') {
+    voice.responseActive = true;
+    updateVoiceInterrupt();
   } else if (event.type === 'input_audio_buffer.speech_started') {
+    if (voice.responseActive) sendVoiceEvent({type:'response.cancel'});
+    voice.responseActive = false;
+    finishVoiceDraft('assistant');
     stopVoicePlayback(); voiceState('listening', 'Listening…');
   } else if (event.type === 'response.function_call_arguments.done') {
     voice.pendingTools.push({name:event.name, arguments:event.arguments, call_id:event.call_id});
   } else if (event.type === 'response.done') {
+    voice.responseActive = false;
+    updateVoiceInterrupt();
     if (voice.pendingTools.length) executePendingVoiceTools(generation);
     else if (voiceReplyIsPlaying()) {
       const generationAtEnd = generation;
@@ -746,6 +1069,7 @@ function handleVoiceEvent(event, generation) {
         voice.playbackTimer = null;
         if (voice.active && generationAtEnd === voice.generation)
           voiceState('listening', 'Listening · speak naturally; click to stop.');
+        updateVoiceInterrupt();
       }, waitMs + 40);
     } else voiceState('listening', 'Listening · speak naturally; click to stop.');
   } else if (event.type === 'error') {
@@ -753,10 +1077,12 @@ function handleVoiceEvent(event, generation) {
   }
 }
 async function startVoice() {
-  const button = el('voice-toggle'); button.disabled = true;
+  const button = el('agent-voice-toggle'); button.disabled = true;
+  el('agent-dictate').disabled = true;
   voiceState('connecting', 'Requesting microphone access…');
-  button.setAttribute('aria-pressed', 'true'); setText('voice-button-label', 'End conversation');
-  clearVoiceTranscript(); voice.active = true; voice.generation += 1;
+  button.setAttribute('aria-pressed', 'true'); setText('agent-voice-button-label', 'End conversation');
+  voice.active = true; voice.generation += 1;
+  voice.responseActive = false; updateVoiceInterrupt();
   const generation = voice.generation;
   try {
     if (!navigator.mediaDevices?.getUserMedia || !window.AudioWorkletNode)
@@ -795,9 +1121,7 @@ async function startVoice() {
     voice.mute = voice.audio.createGain(); voice.mute.gain.value = 0;
     voice.processor.port.onmessage = message => {
       if (!voice.active || !voice.socket || voice.socket.readyState !== WebSocket.OPEN) return;
-      // Speaker playback can leak into the microphone and be transcribed as the user's next turn.
-      // Drop those frames while a Grok response is queued or playing.
-      if (voiceReplyIsPlaying()) return;
+      if (voice.toolRun) return;
       if (voice.ready) sendVoiceEvent({type:'input_audio_buffer.append', audio:b64FromBuffer(message.data)});
       else {
         voice.audioQueue.push(message.data);
@@ -814,6 +1138,7 @@ function toggleVoice() {
   if (voice.active) closeVoice();
   else startVoice();
 }
+
 function togglePreview() {
   preview = !preview; document.body.classList.toggle('preview', preview);
   el('preview-toggle').setAttribute('aria-pressed', String(preview));
@@ -861,7 +1186,35 @@ async function refreshMeasurements() {
 
 el('save-capture-form').addEventListener('submit', saveNewCapture);
 el('preview-toggle').addEventListener('click', togglePreview);
-el('voice-toggle').addEventListener('click', toggleVoice);
+el('agent-chat-form').addEventListener('submit', sendAgentMessage);
+el('agent-voice-toggle').addEventListener('click', toggleVoice);
+el('agent-interrupt').addEventListener('click', interruptVoice);
+el('agent-stop').addEventListener('click', () => {
+  fetch('/api/agent/stop', {method:'POST', headers:{'X-Benchy-Local':'1'}}).catch(() => {});
+  agentState.aborter?.abort();
+});
+el('agent-dictate').addEventListener('click', startAgentDictation);
+el('agent-new-chat').addEventListener('click', () => {
+  if (agentState.active) return;
+  if (voice.active) closeVoice('Voice conversation ended · new chat started.');
+  agentState.threadId = null; agentState.messages = []; saveAgentChat(); renderAgentChat();
+  setAgentStatus(agentConfigured ? 'New conversation ready.' : 'Waiting for the local debugging agent.');
+});
+el('agent-export-chat').addEventListener('click', () => download('benchy-debug-chat.json', {
+  source:'benchy_conversation', exported_at:new Date().toISOString(), thread_id:agentState.threadId, messages:agentState.messages}));
+el('agent-refresh-diff').addEventListener('click', refreshAgentDiff);
+el('agent-flash-open').addEventListener('click', openFlashDialog);
+el('agent-flash-close').addEventListener('click', () => el('agent-flash-dialog').close());
+el('agent-flash-confirm').addEventListener('click', runConfirmedFlash);
+el('agent-wiring-confirmed').addEventListener('change', updateFlashButton);
+el('agent-flash-phrase').addEventListener('input', updateFlashButton);
+el('agent-send-flash-result').addEventListener('click', () => {
+  const result = agentFlash.lastResult || {};
+  const review = {ok:result.ok, compile:result.compile, upload:result.upload, postflash:result.postflash, error:result.error};
+  el('agent-flash-dialog').close();
+  el('agent-message').value = 'A user-authorized build and flash attempt just completed. Review this result and explain whether it succeeded. If the hardware check is still inconclusive, use the smallest useful read-only Benchy measurement:\n' + JSON.stringify(review).slice(0, 5500);
+  el('agent-chat-form').requestSubmit();
+});
 el('refresh-button').addEventListener('click', async () => { await loadHarness(); await Promise.all([loadPorts(), loadCode()]); if (auto) refreshMeasurements(); pollSerial(); });
 for (const kind of ['lab', 'dut']) el(kind + '-port').addEventListener('change', event => {
   localStorage.setItem('benchos-' + kind + '-port', event.target.value);
@@ -1056,19 +1409,17 @@ function renderVisual(view) {
   if (!view.active) {
     message.textContent = view.availability && view.availability.message
       ? view.availability.message
-      : (view.status === 'expired'
+    : (view.status === 'expired'
         ? 'This capture link has expired. Start again for a new QR code.'
-        : 'Start a session to get a temporary QR code. The code contains only a capture link, not the photo.');
+        : 'Start a temporary phone capture link. Add up to four photos, then include them with your next Benchy question.');
   } else if (view.error) message.textContent = view.error;
   else if (view.status === 'waiting') message.textContent = (view.availability && view.availability.warning)
     ? view.availability.warning
     : 'Scan with your phone, then photograph the device under test.';
   else if (view.status === 'uploaded') message.textContent = 'Image received. Analysis will begin automatically.';
   else if (view.status === 'analyzing') message.textContent = 'Analyzing hardware from the photo and the declared harness.';
-  else if (view.status === 'complete') message.textContent = view.analysis && !(view.analysis.observations || []).length && !(view.analysis.possible_issues || []).length
-    ? 'Analysis complete. The photo did not produce a useful visual finding.'
-    : 'Analysis complete. Possible issues are hypotheses until a probe measures them.';
-  else message.textContent = 'Visual inspection is ready.';
+  else if (view.status === 'complete') message.textContent = `${view.photo_count || 1} photo${view.photo_count === 1 ? '' : 's'} ready as secondary context. Ask Benchy a question to include them with the debugging conversation; no standalone photo diagnosis is run.`;
+  else message.textContent = 'Photo context is ready.';
   showQr(view.qr_svg);
   el('visual-scan').hidden = !view.qr_svg;
   const photo = el('visual-photo');
@@ -1136,6 +1487,9 @@ async function runVisualCheck(measurement, target, button) {
 el('visual-start').addEventListener('click', startVisual);
 renderTimeline();
 loadVoiceStatus();
+renderAgentChat();
+loadAgentStatus();
+refreshAgentDiff();
 refreshVisual().catch(() => {});
 loadHarness().then(() => Promise.all([loadPorts(), loadCode()])).then(() => {
   renderAssessment();

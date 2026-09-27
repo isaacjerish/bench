@@ -705,6 +705,7 @@ class InspectionSession:
     status: str = "waiting"
     image: bytes | None = None
     mime_type: str | None = None
+    images: list[tuple[bytes, str]] = field(default_factory=list)
     analysis: dict | None = None
     context: dict | None = None
     error: str | None = None
@@ -731,6 +732,7 @@ class SessionStore:
             for previous in self._sessions.values():
                 previous.image = None
                 previous.mime_type = None
+                previous.images.clear()
                 previous.qr_svg = ""
                 previous.status = "expired"
                 previous.error = "This capture link has expired."
@@ -748,6 +750,7 @@ class SessionStore:
             return True
         session.image = None
         session.mime_type = None
+        session.images.clear()
         session.status = "expired"
         session.error = "This capture link has expired."
         return False
@@ -764,7 +767,7 @@ class SessionStore:
         with self._lock:
             session = self._get(token, moment)
             return {"status": session.status, "status_label": STATUS_LABELS[session.status],
-                    "error": session.error}
+                    "error": session.error, "photo_count": len(session.images)}
 
     def store_image(self, token: str, data: bytes, mime_type: str, now: datetime | None = None) -> dict:
         moment = now or datetime.now(timezone.utc)
@@ -772,15 +775,27 @@ class SessionStore:
             session = self._get(token, moment)
             if session.status == "expired":
                 raise VisualError("This capture link has expired.", HTTPStatus.GONE)
-            if session.status not in {"waiting", "error"}:
+            if session.status not in {"waiting", "error", "complete"}:
                 raise VisualError("This capture session is no longer waiting for a photo.")
+            if len(session.images) >= 4:
+                raise VisualError("This capture session already has four photos.", HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
             session.image = data
             session.mime_type = mime_type
+            session.images.append((data, mime_type))
             session.revision += 1
-            session.status = "uploaded"
+            session.status = "complete"
             session.error = None
             session.analysis = None
+            session.context = {"purpose": "secondary conversation context", "electrical_analysis": False}
             return self._phone(session)
+
+    def images(self, now: datetime | None = None) -> list[tuple[bytes, str]]:
+        moment = now or datetime.now(timezone.utc)
+        with self._lock:
+            if self._current is None:
+                return []
+            session = self._get(self._current, moment)
+            return list(session.images)
 
     def begin_analysis(self, token: str) -> tuple[bytes, str]:
         with self._lock:
@@ -847,7 +862,8 @@ class SessionStore:
                 "context": None, "physical_checks": [], "error": None, "qr_svg": None}
 
     def _phone(self, session: InspectionSession) -> dict:
-        return {"status": session.status, "status_label": STATUS_LABELS[session.status], "error": session.error}
+        return {"status": session.status, "status_label": STATUS_LABELS[session.status],
+                "error": session.error, "photo_count": len(session.images)}
 
     def _view(self, session: InspectionSession) -> dict:
         ready = session.image is not None and session.status in {"uploaded", "analyzing", "complete", "error"}
@@ -858,6 +874,7 @@ class SessionStore:
                 "availability": availability(),
                 "capture_url": session.capture_url if session.status == "waiting" else None,
                 "qr_svg": session.qr_svg if session.status == "waiting" else None,
-                "image_ready": ready, "revision": session.revision, "analysis": session.analysis, "context": session.context,
+                "image_ready": ready, "revision": session.revision, "photo_count": len(session.images),
+                "analysis": None, "context": session.context,
                 "physical_checks": list(session.physical_checks), "error": session.error,
                 "model": session.model}

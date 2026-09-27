@@ -23,3 +23,11 @@ placement with the user when it could have changed. The servo uses a separate
 Avoid repeatedly flashing a board when one measurement could test the current
 hypothesis. Prefer deterministic physical tests over visual guesses. A 250 ms
 frequency window is only a quick estimate at 50 Hz; use 1000 ms for pass/fail.
+
+## Dashboard agent boundary
+
+For Codex conversations started from the local dashboard, never run a command
+that uploads firmware to a device. The website exposes read-only physical
+measurement tools to the agent. If an upload is needed, explain why and direct
+the user to review the diff and use the dashboard's separate, explicitly
+confirmed Build & flash action. Do not change physical wiring from software.
