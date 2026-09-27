@@ -7,3 +7,4 @@ measurements.jsonl
 scripts/arduino-cli.yaml
 validation_runs/dashboard/
 .benchos/
+video/node_modules/

@@ -19,10 +19,9 @@ static constexpr char BUILD_ID[] = "parcel-guard-v1";
 // 1 = water ADC/report forced to zero (leak ignored);
 // 2 = alarm output disabled despite alert; 3 = wrong blink frequency (10 Hz).
 #ifndef PARCEL_GUARD_FAULT
-// SOFTWARE BUG DEMO: 3 selects the intentionally wrong 10 Hz alarm timing.
-// This is separate from the physical sensor-wire swap described above.
-// REPAIR: change 3 to 0, upload to C6, then measure the output at 2 Hz.
-#define PARCEL_GUARD_FAULT 3
+// Normal operation: 250 ms per half-cycle gives a 2 Hz alarm blink.
+// Sensor wiring must be verified separately.
+#define PARCEL_GUARD_FAULT 0
 #endif
 static constexpr uint8_t DEMO_FAULT = PARCEL_GUARD_FAULT;
 static_assert(DEMO_FAULT <= 3, "Unknown demonstration fault");
