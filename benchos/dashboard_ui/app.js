@@ -706,7 +706,7 @@ async function sendAgentMessage(event, options = {}) {
   if (showCodexExchange) saveAgentChat();
   el('agent-send').disabled = true; el('agent-flash-open').disabled = true; el('agent-stop').hidden = false;
   setAgentStatus(options.fromVoice ? 'Checking project files and hardware evidence…' : 'Benchy is investigating…');
-  const controller = new AbortController(); agentState.aborter = controller; let requestError = false;
+  const controller = new AbortController(); agentState.aborter = controller; let requestError = false, requestErrorMessage = '';
   try {
     const response = await fetch('/api/agent/chat', {method:'POST', cache:'no-store', signal:controller.signal,
       headers:{'Content-Type':'application/json','X-Benchy-Local':'1'},
@@ -719,7 +719,7 @@ async function sendAgentMessage(event, options = {}) {
       let data; try { data = JSON.parse(line.slice(5).trim()); } catch { return; }
       if (data.thread_id) { agentState.threadId = data.thread_id; saveAgentChat(); }
       if (data.kind === 'status') { setAgentStatus(data.message); return; }
-      if (data.kind === 'error') { requestError = true; if (showCodexExchange) { agentState.messages.push({role:'error', text:data.message}); renderAgentChat(); } return; }
+      if (data.kind === 'error') { requestError = true; requestErrorMessage = data.message || 'The Codex request failed.'; if (showCodexExchange) { agentState.messages.push({role:'error', text:requestErrorMessage}); renderAgentChat(); } return; }
       if (data.kind === 'complete') return;
       if (data.kind !== 'codex_event') return;
       const event = data.event || {}, extracted = assistantTextFromEvent(event), status = describeAgentEvent(event);
@@ -743,12 +743,13 @@ async function sendAgentMessage(event, options = {}) {
       }
     }
     if (showCodexExchange) { renderAgentChat(); saveAgentChat(); }
-    if (photos.length) clearAgentPhotos();
+    if (photos.length && !requestError) clearAgentPhotos();
     loadCode(); refreshAgentDiff();
     if (agentState.threadId && !requestError) setAgentStatus('Ready · Benchy is ready for another question.');
     else if (requestError) setAgentStatus('Request ended with an error.');
   } catch (error) {
     if (error.name !== 'AbortError') {
+      requestError = true; requestErrorMessage = error.message || 'The Codex request failed.';
       if (showCodexExchange) {
         const replyIndex = agentState.messages.indexOf(reply);
         if (replyIndex >= 0 && !reply.text) agentState.messages.splice(replyIndex, 1);
@@ -768,7 +769,8 @@ async function sendAgentMessage(event, options = {}) {
     agentState.active = false; agentState.aborter = null; agentState.voiceTurn = false;
     el('agent-stop').hidden = true; el('agent-send').disabled = !agentConfigured; el('agent-flash-open').disabled = false;
   }
-  return reply.text || (requestError ? 'Codex reported an error. See the Codex conversation above for details.' :
+  if (requestError) return 'Codex could not complete the request: ' + requestErrorMessage + ' Do not present this as a successful investigation.';
+  return reply.text || (
     'Codex finished without a response. Check the local dashboard terminal for details.');
 }
 let agentPhotos = [];

@@ -150,6 +150,32 @@ def agent_mcp_config() -> tuple[str, ...]:
     )
 
 
+def safe_agent_diagnostic(message: str) -> str:
+    """Keep provider errors useful without exposing credentials in the UI."""
+    message = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", message)
+    for name in ("OPENAI_API_KEY", "CODEX_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY"):
+        secret = os.environ.get(name)
+        if secret:
+            message = message.replace(secret, "[redacted]")
+    message = re.sub(r"\b(?:sk-|xai-|AIza)[A-Za-z0-9_-]{12,}", "[redacted]", message)
+    message = re.sub(r"(?i)(Bearer\s+)\S+", r"\1[redacted]", message)
+    return message.strip()[:2000]
+
+
+def codex_event_error(event: dict) -> str:
+    """JSON-mode failures arrive on stdout, often with no stderr at all."""
+    if event.get("type") not in {"error", "turn.failed"}:
+        return ""
+    error = event.get("error")
+    if isinstance(error, dict):
+        message = error.get("message")
+    elif isinstance(error, str):
+        message = error
+    else:
+        message = event.get("message")
+    return safe_agent_diagnostic(message) if isinstance(message, str) else ""
+
+
 def viewable_source_files() -> tuple[str, ...]:
     """Expose only project files explicitly listed for the current design."""
     try:
@@ -1204,6 +1230,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 process.stdin.close()
                 assert process.stdout is not None
                 actual_thread_id = thread_id
+                stream_error = ""
+                turn_failed = False
                 for line in process.stdout:
                     line = line.strip()
                     if not line:
@@ -1216,13 +1244,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     if isinstance(event, dict):
                         if event.get("type") == "thread.started":
                             actual_thread_id = event.get("thread_id") or actual_thread_id
+                        detail = codex_event_error(event)
+                        if detail:
+                            stream_error = detail
+                        if event.get("type") == "turn.failed":
+                            turn_failed = True
+                        elif event.get("type") == "turn.completed":
+                            # A transient stream error may have recovered.
+                            stream_error = ""
+                            turn_failed = False
+                        if detail:
+                            event = {"type": event["type"], "message": detail}
                         emit({"kind": "codex_event", "event": event,
                               "thread_id": actual_thread_id})
                 return_code = process.wait()
-                if return_code:
+                if return_code or turn_failed or stream_error:
                     error_file.seek(0)
-                    diagnostic = error_file.read(16_384).decode("utf-8", errors="replace")
-                    emit({"kind": "error", "message": diagnostic.strip() or
+                    diagnostic = safe_agent_diagnostic(error_file.read(16_384).decode("utf-8", errors="replace"))
+                    emit({"kind": "error", "message": stream_error or diagnostic or
                           f"Codex exited with status {return_code}.",
                           "thread_id": actual_thread_id})
                 else:

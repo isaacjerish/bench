@@ -1,5 +1,27 @@
 # Benchy handoff
 
+## Current runtime fix: show the real Codex failure
+
+- User restarted the dashboard manually after the earlier approval-limit block,
+  then saw only `Codex exited with status 1` in chat. The server and CLI login
+  now work; a fresh request through the existing Gemini photo context and Codex
+  returned `BENCHY_CONNECTION_OK`. The original failure cause was not preserved
+  by the UI, so do not retrospectively label it an authentication or quota error.
+- Codex JSON-mode `error` / `turn.failed` events carry details on stdout. The
+  backend previously forwarded these without surfacing them, then reported an
+  empty-stderr fallback. It now retains the actual error, redacts credentials,
+  and recognizes a recovered error followed by `turn.completed` as success.
+  Reference: [official Codex event documentation](https://learn.chatgpt.com/docs/non-interactive-mode#make-output-machine-readable).
+- Voice receives the failure explanation instead of a generic message pointing
+  to a hidden conversation. Failed typed requests keep attached photos available
+  for retry. Nine targeted dashboard-agent tests and JS syntax checks pass.
+- Restarted the local dashboard with the fix on port 8765. Temporary phone
+  photos live in memory and need attaching again after a server restart.
+- Actual website follow-up completed successfully after restart: S3 light
+  **2.242 V**, water **0 V**; C6 reported light **0.002 V**, water **2.269 V**;
+  alarm **10 Hz**, 20 rising edges over 2001 ms, 50 ms high pulse. Both seeded
+  faults remain present. No hardware, wiring, or firmware changes were made.
+
 ## Current filming direction: hook → context → conversational repair
 
 - User reworked the video around an existing humorous LED/explosion intro,

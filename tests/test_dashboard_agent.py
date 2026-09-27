@@ -10,7 +10,7 @@ from urllib.error import HTTPError
 
 import pytest
 
-from benchos.dashboard import agent_mcp_config
+from benchos.dashboard import agent_mcp_config, codex_event_error, safe_agent_diagnostic
 from benchos.visual_inspection import GeminiRestProvider, VisualError
 
 
@@ -56,6 +56,63 @@ def test_photo_context_describes_all_images_without_diagnosis_schema():
     answer = GeminiRestProvider('test-key', 'test-model', succeed).describe_images([
         (b'photo1', 'image/jpeg'), (b'photo2', 'image/png')])
     assert 'pin labels are uncertain' in answer
+
+
+def test_structured_agent_errors_are_readable_and_credentials_are_redacted(monkeypatch):
+    monkeypatch.setenv('GEMINI_API_KEY', 'sample-secret-for-regression')
+    detail = codex_event_error({'type': 'turn.failed', 'error': {
+        'message': '\x1b[31mAuthentication failed: sample-secret-for-regression\x1b[0m'}})
+    assert detail == 'Authentication failed: [redacted]'
+    assert codex_event_error({'type': 'error', 'message': 'Usage limit reached'}) == 'Usage limit reached'
+    assert codex_event_error({'type': 'item.completed', 'item': {'error': 'not a turn failure'}}) == ''
+    assert safe_agent_diagnostic('Authorization: Bearer abc.def.ghi') == 'Authorization: Bearer [redacted]'
+
+
+@pytest.mark.parametrize('events,return_code,expected', [
+    ([{'type': 'error', 'message': 'Reconnecting...'},
+      {'type': 'turn.failed', 'error': {'message': 'Usage limit reached. Try again at 11:30 PM.'}}],
+     1, 'Usage limit reached. Try again at 11:30 PM.'),
+    ([{'type': 'turn.failed', 'error': {'message': 'Model access unavailable.'}}],
+     0, 'Model access unavailable.'),
+    ([{'type': 'error', 'message': 'Reconnecting...'},
+      {'type': 'turn.completed'}], 0, None),
+])
+def test_chat_surfaces_json_failure_without_stderr(monkeypatch, events, return_code, expected):
+    import threading
+    from urllib.request import Request, urlopen
+    from benchos.dashboard import DashboardServer, DashboardState
+
+    class FakeProcess:
+        def __init__(self, *args, **kwargs):
+            self.stdin = io.StringIO()
+            self.stdout = io.StringIO('\n'.join(json.dumps(event) for event in events))
+        def wait(self):
+            return return_code
+        def poll(self):
+            return return_code
+
+    monkeypatch.setattr('benchos.dashboard.find_codex_cli', lambda: 'test-codex')
+    monkeypatch.setattr('benchos.dashboard.subprocess.Popen', FakeProcess)
+    state = DashboardState()
+    server = DashboardServer(('127.0.0.1', 0), state)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    base = f'http://127.0.0.1:{server.server_address[1]}'
+    try:
+        request = Request(base + '/api/agent/chat',
+            data=json.dumps({'message': 'Test the connection'}).encode(),
+            headers={'Content-Type': 'application/json', 'X-Benchy-Local': '1', 'Origin': base})
+        with urlopen(request, timeout=5) as response:
+            frames = [json.loads(line[6:]) for line in response.read().decode().splitlines()
+                      if line.startswith('data: ')]
+        failures = [frame['message'] for frame in frames if frame['kind'] == 'error']
+        assert failures == ([expected] if expected else [])
+        assert any(frame['kind'] == 'complete' for frame in frames) is (expected is None)
+    finally:
+        server.shutdown()
+        server.server_close()
+        state.close()
+        worker.join(timeout=2)
 
 
 def test_web_flash_confirmation_and_upload_failure_remain_separate(monkeypatch):
